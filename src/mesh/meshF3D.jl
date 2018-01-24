@@ -87,11 +87,13 @@ function genEdgesF3D( f::Matrix{Int64} )
   boundsf =  f[:,5]
   boundsf[ boundsf .> 0 ] = 0
   boundsf = -boundsf
-  bounds  =  vcat( boundsf, boundsf, boundsf, boundsf, boundsf, boundsf )
-
+  bounds  =  vcat( boundsf, boundsf, boundsf )
   ne = size(edges,1)
 
   boundsUni = fill( 0, ne, 2 )
+
+  # sort in ascending order
+  edges = sort( edges, 2 )
 
   # This index links to the first unique index in the array edges
   ix  = groupslices( edges, 1 )
@@ -124,10 +126,10 @@ function genEdgesF3D( f::Matrix{Int64} )
       jx[ii] = jx[ix[ii]]
       # add boundary information
       if bounds[ii] > 0
-        if boundsUni[ii,1] > 0
-          boundsUni[ii,2] = bounds[ii]
+        if boundsUni[ ix[ii] ,1] > 0
+          boundsUni[ ix[ii] ,2] = bounds[ii]
         else
-          boundsUni[ii,1] = bounds[ii]
+          boundsUni[ ix[ii] ,1] = bounds[ii]
         end
       end
     end
