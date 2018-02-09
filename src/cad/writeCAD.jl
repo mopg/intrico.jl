@@ -17,24 +17,23 @@ function writeCAD( mesh::MeshF,  lat::Lattice, flname::String )
     (context, status) = jegads.EG_open( )
     if (status < 0) error("Can't open, failure code: %i", status) end
 
-    # 1. connect all nodes to their respective half-length edges
+    @printf( "CAD: %d nodes, %d edges\n", mesh.n, size(mesh.e,1) )
 
+    # 1. connect all nodes to their respective half-length edges
+    println("CAD:   generating nodes")
     nodes = genNodesCAD( mesh, lat, context )
 
-    # status = jegads.EG_saveModel( nodes[1], flname )
-    # if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
-    # status = jegads.EG_saveModel( nodes[2], "test2.egads" )
-    # if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
-
     # 2. connect those nodal hubs together to generate model
+    println("CAD:   connecting nodes")
     finmodel = genModelCAD( mesh, nodes, context )
 
     # 3. shave off nodes interfering with boundary
+    # TODO
 
     # 4. save model
-    println("   saving model")
+    println("CAD:   saving model")
     status = jegads.EG_saveModel( finmodel, flname )
-    if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
+    # if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end # commented because otherwise context dies
 
     # close everything
     status = jegads.EG_deleteObject( finmodel )
@@ -52,45 +51,57 @@ function genNodesCAD( mesh::MeshF3D, lat::Lattice, context::jegads.ego )
 
     nodes = fill( jegads.ego(0), mesh.n )
 
-    eps = 1.0e-2
-
     for ii in 1:mesh.n
-
-        println("node ",ii)
-
+        @printf(".")
         ar_max = maximum( lat.ar[ mesh.n2e[ii] ] )
 
-        # Generate sphere
-        datasph = vcat( mesh.p[ii,:], sqrt(ar_max/π)*(1.0 + eps) )
-        println("   datasph ",datasph)
-        (ebody, status) = jegads.EG_makeSolidBody(context, jegads.SPHERE, datasph)
-        if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
+        status_boolean = Cint(1)
 
-        # Generate half length rods
+        eps = 5.0e-3 # 1.0e-2
         emodel = jegads.ego(0)
-        for jj in 1:length(mesh.n2e[ii])
-            ie  = mesh.n2e[ii][jj]
-            ave = (mesh.p[mesh.e[ie,1],:] + mesh.p[mesh.e[ie,2],:]) / 2.0
-            datacyl = vcat( mesh.p[ii,:],
-                            ave,
-                            sqrt( lat.ar[ie] / π ) )
-            println("   datacyl ", datacyl)
-            (etemp, status) = jegads.EG_makeSolidBody(context, jegads.CYLINDER, datacyl)
-            if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
-            println("   solid body ", jj)
-            # join to rest of node
-            (emodel, status) = jegads.EG_solidBoolean(ebody, etemp, jegads.FUSION)
-            if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
-            println("   solid boolean ", jj)
-            # delete temporary bodies
-            status = jegads.EG_deleteObject(ebody)
-            if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
-            status = jegads.EG_deleteObject(etemp)
+        ebody  = jegads.ego(0)
+
+        while (status_boolean != jegads.EGADS_SUCCESS)
+
+            # Generate sphere
+            datasph = vcat( mesh.p[ii,:], sqrt(ar_max/π)*(1.0 + eps) )
+
+            (ebody, status) = jegads.EG_makeSolidBody(context, jegads.SPHERE, datasph)
             if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
 
-            # get body from model
-            (ebody, status) = jegads.getBodyFromModel( emodel )
-            if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
+            # Generate half length rods
+            for jj in 1:length(mesh.n2e[ii])
+                ie  = mesh.n2e[ii][jj]
+                ave = (mesh.p[mesh.e[ie,1],:] + mesh.p[mesh.e[ie,2],:]) / 2.0
+                datacyl = vcat( mesh.p[ii,:],
+                                ave,
+                                sqrt( lat.ar[ie] / π ) )
+
+                (etemp, status) = jegads.EG_makeSolidBody(context, jegads.CYLINDER, datacyl)
+                if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
+
+                # join to rest of node
+                (emodel, status) = jegads.EG_solidBoolean(ebody, etemp, jegads.FUSION)
+                # if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
+                status_boolean = status
+
+                # delete temporary bodies
+                status = jegads.EG_deleteObject(ebody)
+                if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
+                status = jegads.EG_deleteObject(etemp)
+                if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
+
+                if (status_boolean != jegads.EGADS_SUCCESS)
+                    eps += 5.0e-3
+                    println("   NOTE: increasing radius by 0.5\% of node ", ii)
+                    break
+                end
+
+                # get body from model
+                (ebody, status) = jegads.getBodyFromModel( emodel )
+                if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
+
+            end
 
         end
 
@@ -106,13 +117,13 @@ function genNodesCAD( mesh::MeshF3D, lat::Lattice, context::jegads.ego )
 
     end
 
+    @printf("\n")
+
     return nodes # NOTE: nodes are models
 
 end
 
 function genModelCAD( mesh::MeshF3D, nodes::Vector{jegads.ego}, context::jegads.ego )
-
-    println("joining model ")
 
     nod = 1
     acnodes = [nod]
@@ -136,9 +147,6 @@ function genModelCAD( mesh::MeshF3D, nodes::Vector{jegads.ego}, context::jegads.
 
         nrem -= length(nodall)
 
-        println("   acnodes ", acnodes )
-        println("   nodall  ", nodall )
-
         acnodes = append!( acnodes, nodall )
 
         for kk in 1:length(nodall)
@@ -152,17 +160,19 @@ function genModelCAD( mesh::MeshF3D, nodes::Vector{jegads.ego}, context::jegads.
             # join to rest of node
             (emodel, status) = jegads.EG_solidBoolean(ebody, ebody2, jegads.FUSION)
             if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
-            println("   solid boolean ", kk)
 
             # delete temporary bodies
             status = jegads.EG_deleteObject(ebody)
             if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
             status = jegads.EG_deleteObject(ebody2)
             if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
-            println("   done")
+
+            @printf(".")
         end
 
     end
+
+    @printf("\n")
 
     return emodel
 

@@ -33,6 +33,8 @@ struct MeshF3D <: MeshF
   nodes::Array{Float64,3} # Nodes on which solution is evaluated -- needed to
                           #  compute Jacobian on face
 
+  n2e::Vector{Vector{Int64}} # Node to edge connectivity
+
 end
 
 """
@@ -44,7 +46,9 @@ function MeshF( mesh::luteos.Mesh3D )
 
   e = genEdgesF3D( mesh.f )
 
-  MeshF3D( 3, mesh.n, mesh.p, mesh.t, mesh.t2f, mesh.f, mesh.fb, e, mesh.nodes )
+  n2e = genNEconnec3D( e, mesh.n )
+
+  MeshF3D( 3, mesh.n, mesh.p, mesh.t, mesh.t2f, mesh.f, mesh.fb, e, mesh.nodes, n2e )
 
 end
 
@@ -71,7 +75,9 @@ function MeshF3D( name::String )
 
   e_ = genEdgesF3D( mesh.f )
 
-  MeshF3D( 3, n_, p_, t_, t2f_, f_, fb_, e_, nodes_ )
+  n2e = genNEconnec3D( e_, n_ )
+
+  MeshF3D( 3, n_, p_, t_, t2f_, f_, fb_, e_, nodes_, n2e )
 
 end
 
@@ -146,5 +152,35 @@ function genEdgesF3D( f::Matrix{Int64} )
   e[:,3:4]   = boundsUni[indUni,:]
 
   return e
+
+end
+
+"""
+    genNEconnec3D( e::Matrix{Int64}, n::Int64 )
+
+Generates node to edge connectivity given edge connectivity (`e`).
+"""
+function genNEconnec3D( e::Matrix{Int64}, n::Int64 )
+
+    n2e = Vector{Vector{Int64}}(n)
+    for ii in 1:n
+        n2e[ii] = fill( 0, 0 )
+    end
+
+    for jj in 1:size(e,1)
+
+        ii1 = e[jj,1]
+        ii2 = e[jj,2]
+
+        if isempty( n2e[ii1] .== jj ) || !any( n2e[ii1] .== jj )
+            append!(n2e[ii1], jj)
+        end
+        if isempty( n2e[ii2] .== jj ) || !any( n2e[ii2] .== jj )
+            append!(n2e[ii2], jj)
+        end
+
+    end
+
+    return n2e
 
 end
