@@ -11,7 +11,7 @@
 #
 # ---------------------------------------------------------------------------- #
 
-function writeCAD( mesh::MeshF,  lat::Lattice, flname::String )
+function writeCAD( mesh::MeshF,  lat::Lattice, flname::String; eps = 5.e-3, Δeps = 5.e-3 )
 
     # open egads
     (context, status) = jegads.EG_open( )
@@ -21,7 +21,7 @@ function writeCAD( mesh::MeshF,  lat::Lattice, flname::String )
 
     # 1. connect all nodes to their respective half-length edges
     println("CAD:   generating nodes")
-    nodes = genNodesCAD( mesh, lat, context )
+    nodes = genNodesCAD( mesh, lat, context, eps, Δeps )
 
     # 2. connect those nodal hubs together to generate model
     println("CAD:   connecting nodes")
@@ -47,7 +47,7 @@ function writeCAD( mesh::MeshF,  lat::Lattice, flname::String )
 
 end
 
-function genNodesCAD( mesh::MeshF3D, lat::Lattice, context::jegads.ego )
+function genNodesCAD( mesh::MeshF3D, lat::Lattice, context::jegads.ego, eps::Float64, Δeps::Float64 )
 
     nodes = fill( jegads.ego(0), mesh.n )
 
@@ -57,7 +57,6 @@ function genNodesCAD( mesh::MeshF3D, lat::Lattice, context::jegads.ego )
 
         status_boolean = Cint(1)
 
-        eps = 5.0e-3 # 1.0e-2
         emodel = jegads.ego(0)
         ebody  = jegads.ego(0)
 
@@ -71,8 +70,11 @@ function genNodesCAD( mesh::MeshF3D, lat::Lattice, context::jegads.ego )
 
             # Generate half length rods
             for jj in 1:length(mesh.n2e[ii])
-                ie  = mesh.n2e[ii][jj]
-                ave = (mesh.p[mesh.e[ie,1],:] + mesh.p[mesh.e[ie,2],:]) / 2.0
+                ie   = mesh.n2e[ii][jj]
+                nods = mesh.e[ie,1:2]
+                deleteat!(nods,nods .== ii)
+                ave = mesh.p[ii,:] + 0.50 * (mesh.p[nods[1],:] - mesh.p[ii,:])
+                # ave = (mesh.p[mesh.e[ie,1],:] + mesh.p[mesh.e[ie,2],:]) / 2.0
                 datacyl = vcat( mesh.p[ii,:],
                                 ave,
                                 sqrt( lat.ar[ie] / π ) )
@@ -92,8 +94,8 @@ function genNodesCAD( mesh::MeshF3D, lat::Lattice, context::jegads.ego )
                 if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
 
                 if (status_boolean != jegads.EGADS_SUCCESS)
-                    eps += 5.0e-3
-                    println("   NOTE: increasing radius by 0.5\% of node ", ii)
+                    eps += Δeps
+                    @printf("   NOTE: increasing radius of node %d by %3.2f%%\n", ii, Δeps*100.)
                     break
                 end
 
@@ -148,9 +150,14 @@ function genModelCAD( mesh::MeshF3D, nodes::Vector{jegads.ego}, context::jegads.
         nrem -= length(nodall)
 
         acnodes = append!( acnodes, nodall )
+        println("acnodes ", acnodes)
+        println("nodall  ", nodall)
 
         for kk in 1:length(nodall)
-
+            # if nodall[kk] == 22
+            #     nrem = 0
+            #     break
+            # end
             # get body from model
             (ebody, status) = jegads.getBodyFromModel( emodel )
             if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
@@ -158,7 +165,9 @@ function genModelCAD( mesh::MeshF3D, nodes::Vector{jegads.ego}, context::jegads.
             if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
 
             # join to rest of node
-            (emodel, status) = jegads.EG_solidBoolean(ebody, ebody2, jegads.FUSION)
+            @printf("CAD:   joining node %d\n", nodall[kk] )
+            toler = Cdouble(0.0)
+            (emodel, status) = jegads.EG_join(ebody, ebody2, toler)
             if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
 
             # delete temporary bodies
@@ -167,7 +176,7 @@ function genModelCAD( mesh::MeshF3D, nodes::Vector{jegads.ego}, context::jegads.
             status = jegads.EG_deleteObject(ebody2)
             if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
 
-            @printf(".")
+            # @printf(".")
         end
 
     end
