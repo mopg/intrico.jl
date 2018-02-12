@@ -127,61 +127,109 @@ end
 
 function genModelCAD( mesh::MeshF3D, nodes::Vector{jegads.ego}, context::jegads.ego )
 
-    nod = 1
-    acnodes = [nod]
+    nod1 =  7
+    nod2 = 18
 
-    (emodel, status) = jegads.EG_copyObject( nodes[nod], C_NULL )
+    # get bodies from model
+    (ebody1,status) = jegads.getBodyFromModel( nodes[ nod1 ] )
+    if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
+    (ebody2,status) = jegads.getBodyFromModel( nodes[ nod2 ] )
     if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
 
-    nrem = mesh.n - nod
+    emodel, status = jegads.EG_join( ebody1, ebody2, Cdouble(0.0) )
 
-    while nrem > 0
+    # NOTE: This doesn't work because the faces are rotated with respect to each other. How to fix this????
 
-        nodall = fill( 0, 0 )
-
-        for ii in 1:length(acnodes), jj in 1:length( mesh.n2e[ acnodes[ii] ] )
-            ie = mesh.n2e[ acnodes[ii] ][jj]
-            append!( nodall, mesh.e[ie,1:2] )
-        end
-
-        nodall = unique( nodall )
-        deleteat!(nodall, findin(nodall, acnodes) )
-
-        nrem -= length(nodall)
-
-        acnodes = append!( acnodes, nodall )
-        println("acnodes ", acnodes)
-        println("nodall  ", nodall)
-
-        for kk in 1:length(nodall)
-            # if nodall[kk] == 22
-            #     nrem = 0
-            #     break
-            # end
-            # get body from model
-            (ebody, status) = jegads.getBodyFromModel( emodel )
-            if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
-            (ebody2,status) = jegads.getBodyFromModel( nodes[ nodall[kk] ] )
-            if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
-
-            # join to rest of node
-            @printf("CAD:   joining node %d\n", nodall[kk] )
-            toler = Cdouble(0.0)
-            (emodel, status) = jegads.EG_join(ebody, ebody2, toler)
-            if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
-
-            # delete temporary bodies
-            status = jegads.EG_deleteObject(ebody)
-            if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
-            status = jegads.EG_deleteObject(ebody2)
-            if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
-
-            # @printf(".")
-        end
-
-    end
-
-    @printf("\n")
+    # efaces_ptr = Vector{ Ptr{jegads.ego} }( mesh.n )
+    # nface_vec  = Vector{Int64}( mesh.n )
+    #
+    # # get faces of all nodes first
+    # toler = Cdouble(0.0)
+    # for kk in 1:mesh.n
+    #
+    #     # get body from model
+    #     (ebody,status) = jegads.getBodyFromModel( nodes[ kk ] )
+    #     if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
+    #
+    #     # get faces from body
+    #     nface_vec[kk], ef_ptr, status = jegads.EG_getBodyFaces( ebody, toler )
+    #     if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
+    #
+    #     efaces_ptr[kk] = ef_ptr[]
+    #
+    # end
+    #
+    # # get matching faces
+    # tolerf = Cdouble(0.0); cntmax = 14
+    # matches_vec = Vector{ Vector{Int64} }( mesh.n )
+    # for ii in 1:mesh.n
+    #     matches_vec[ii] = fill( 0, 0 )
+    # end
+    # for jj in 7:7#1:size(mesh.e,1)
+    #
+    #     nod1 = mesh.e[jj,1]
+    #     nod2 = mesh.e[jj,2]
+    #
+    #     # get bodies from model
+    #     (ebody1,status) = jegads.getBodyFromModel( nodes[ nod1 ] )
+    #     if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
+    #     (ebody2,status) = jegads.getBodyFromModel( nodes[ nod2 ] )
+    #     if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
+    #
+    #     # match faces
+    #     nmatch  = 0
+    #     matches = fill( 0, 0 )
+    #
+    #     cnt = 0
+    #     while nmatch != 1 && cnt < cntmax
+    #         (nmatch,matches,status) = jegads.EG_matchBodyFaces( ebody1, ebody2, tolerf )
+    #         if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
+    #         if cnt == 0
+    #             tolerf += 1e-15
+    #         else
+    #             tolerf *= 10.0
+    #             warn("WriteCAD: Was not able to find matching faces between nodes ",
+    #                 nod1, " and ", nod2, " on edge ",jj, " increasing tolerance to ", tolerf)
+    #             println("nmatch: ",nmatch)
+    #
+    #         end
+    #         cnt += 1
+    #     end
+    #     if cnt == cntmax
+    #         error("WriteCAD: Was not able to find matching faces between nodes ",
+    #             nod1, " and ", nod2, " on edge ",jj)
+    #     end
+    #     tolerf *= 0.0
+    #
+    #     append!( matches_vec[nod1], matches[1] )
+    #     append!( matches_vec[nod2], matches[2] )
+    #
+    #     # delete temporary bodies
+    #     # status = jegads.EG_deleteObject(ebody1)
+    #     # if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
+    #     # status = jegads.EG_deleteObject(ebody2)
+    #     # if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
+    #
+    # end
+    #
+    # # generate list of faces
+    # efaces = Vector{ jegads.ego }( sum(nface_vec) )
+    # fcnt = 1
+    # for kk in 1:mesh.n
+    #
+    #     for ii in 1:nface_vec[kk]
+    #         if !any( ii .== matches_vec[kk] )
+    #             efaces[fcnt] = unsafe_load(efaces_ptr[kk],ii); fcnt += 1
+    #         end
+    #     end
+    #
+    # end
+    # fcnt -= 1
+    #
+    # # join model
+    # tolerj = Cdouble(0.0)
+    # (emodel, status) = jegads.EG_sewFaces( Cint(fcnt), efaces, tolerj, Cint(0) )
+    # if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
 
     return emodel
 
