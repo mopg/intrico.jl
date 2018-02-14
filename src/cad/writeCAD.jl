@@ -11,6 +11,11 @@
 #
 # ---------------------------------------------------------------------------- #
 
+"""
+    writeCAD( mesh::MeshF,  lat::Lattice, flname::String; eps = 5.e-3, Δeps = 5.e-3 )
+
+Writes a CAD file for the lattice in `mesh` with the areas defined in `lat`.
+"""
 function writeCAD( mesh::MeshF,  lat::Lattice, flname::String; eps = 5.e-3, Δeps = 5.e-3 )
 
     # open egads
@@ -63,6 +68,11 @@ function writeCAD( mesh::MeshF,  lat::Lattice, flname::String; eps = 5.e-3, Δep
 
 end
 
+"""
+    genNodesCAD( mesh::MeshF3D, lat::Lattice, context::jegads.ego, eps::Float64, Δeps::Float64 )
+
+Generates nodes by Boolean operations between cylinders and spheres.
+"""
 function genNodesCAD( mesh::MeshF3D, lat::Lattice, context::jegads.ego, eps::Float64, Δeps::Float64 )
 
     nodes = fill( jegads.ego(0), mesh.n )
@@ -170,20 +180,12 @@ function genNodesCAD( mesh::MeshF3D, lat::Lattice, context::jegads.ego, eps::Flo
 
 end
 
+"""
+    genModelCAD( mesh::MeshF3D, nodes::Vector{jegads.ego}, context::jegads.ego )
+
+Stitches the nodes together into one final model.
+"""
 function genModelCAD( mesh::MeshF3D, nodes::Vector{jegads.ego}, context::jegads.ego )
-
-    # nod1 =  7
-    # nod2 = 18
-    #
-    # # get bodies from model
-    # (ebody1,status) = jegads.getBodyFromModel( nodes[ nod1 ] )
-    # if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
-    # (ebody2,status) = jegads.getBodyFromModel( nodes[ nod2 ] )
-    # if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
-    #
-    # emodel, status = jegads.EG_join( ebody1, ebody2, Cdouble(0.0) )
-
-    # NOTE: This doesn't work because the faces are rotated with respect to each other. How to fix this????
 
     efaces_ptr = Vector{ Ptr{jegads.ego} }( mesh.n )
     nface_vec  = Vector{Int64}( mesh.n )

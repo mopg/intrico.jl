@@ -1,6 +1,23 @@
+# ---------------------------------------------------------------------------- #
+#
+#   genSTL.jl
+#
+#   Write STL from lattice
+#
+#   sterno
+#   Spring 2018
+#
+#   Max Opgenoord
+#
+# ---------------------------------------------------------------------------- #
 
 import QHull
 
+"""
+    genSTL( mesh::MeshF,  lat::Lattice, flname::String; n = 8, name = "object" )
+
+Generates a .stl file for the lattice in `mesh` with the areas defined in `lat`.
+"""
 function genSTL( mesh::MeshF,  lat::Lattice, flname::String; n = 8, name = "object" )
 
     # 1. compute correct distance from node
@@ -22,6 +39,11 @@ function genSTL( mesh::MeshF,  lat::Lattice, flname::String; n = 8, name = "obje
 
 end
 
+"""
+    compDist( mesh::MeshF,  lat::Lattice )
+
+Computes the distance from the end face to the node
+"""
 function compDist( mesh::MeshF,  lat::Lattice )
 
     fdist = fill( 0.0, size(mesh.e,1), 2 )
@@ -86,6 +108,11 @@ function compDist( mesh::MeshF,  lat::Lattice )
 
 end
 
+"""
+    genSTLcyls( mesh::MeshF,  lat::Lattice, fdist::Matrix{Float64}, n::Int64, fid::IOStream )
+
+Writes the STL facets for all cylinders.
+"""
 function genSTLcyls( mesh::MeshF,  lat::Lattice, fdist::Matrix{Float64}, n::Int64, fid::IOStream )
 
     θ = linspace( 0, 2*π, n )
@@ -125,6 +152,11 @@ function genSTLcyls( mesh::MeshF,  lat::Lattice, fdist::Matrix{Float64}, n::Int6
 
 end
 
+"""
+    genSTLnods( mesh::MeshF, lat::Lattice, fdist::Matrix{Float64}, n::Int64, fid::IOStream )
+
+Writes the STL facets for all nodes.
+"""
 function genSTLnods( mesh::MeshF, lat::Lattice, fdist::Matrix{Float64}, n::Int64, fid::IOStream )
 
     θ = linspace( 0, 2*π, n )
@@ -201,6 +233,13 @@ function genSTLnods( mesh::MeshF, lat::Lattice, fdist::Matrix{Float64}, n::Int64
 
 end
 
+"""
+    writeSTLcyl( xx1::Vector{Float64}, yy1::Vector{Float64}, zz1::Vector{Float64},
+                 xx2::Vector{Float64}, yy2::Vector{Float64}, zz2::Vector{Float64},
+                 fid::IOStream )
+
+Writes the STL facets for one cylinder.
+"""
 function writeSTLcyl( xx1::Vector{Float64}, yy1::Vector{Float64}, zz1::Vector{Float64},
                       xx2::Vector{Float64}, yy2::Vector{Float64}, zz2::Vector{Float64},
                       fid::IOStream )
@@ -223,6 +262,13 @@ function writeSTLcyl( xx1::Vector{Float64}, yy1::Vector{Float64}, zz1::Vector{Fl
 
 end
 
+"""
+    cleanupCHull( faces::Vector{Vector{Int64}},   verts::Matrix{Float64},
+                  nvecs::Vector{Vector{Float64}}, centroid::Vector{Float64} )
+
+Flips the normals outward for the convex hulls and deletes faces that are
+coincident with the end-faces.
+"""
 function cleanupCHull( faces::Vector{Vector{Int64}},   verts::Matrix{Float64},
                        nvecs::Vector{Vector{Float64}}, centroid::Vector{Float64} )
 
@@ -265,6 +311,11 @@ function cleanupCHull( faces::Vector{Vector{Int64}},   verts::Matrix{Float64},
 
 end
 
+"""
+    writeFacetSTLA( vert::Matrix{Float64}, fid::IOStream )
+
+Writes one STL facet
+"""
 function writeFacetSTLA( vert::Matrix{Float64}, fid::IOStream )
     # ASCII
 
@@ -283,6 +334,11 @@ function writeFacetSTLA( vert::Matrix{Float64}, fid::IOStream )
 
 end
 
+"""
+    rotTransCirc( xx::Vector{Float64}, yy::Vector{Float64}, b::Vector{Float64} )
+
+Rotates a circle defined in `xx` and `yy` such that it is normal to the vector `b`.
+"""
 function rotTransCirc( xx::Vector{Float64}, yy::Vector{Float64}, b::Vector{Float64} )
     # https://math.stackexchange.com/questions/180418/calculate-rotation-matrix-to-align-vector-a-to-vector-b-in-3d
 
