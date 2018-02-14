@@ -249,12 +249,6 @@ function genModelCAD( mesh::MeshF3D, nodes::Vector{jegads.ego}, context::jegads.
         append!( matches_vec[nod1], matches[1] )
         append!( matches_vec[nod2], matches[2] )
 
-        # delete temporary bodies
-        # status = jegads.EG_deleteObject(ebody1)
-        # if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
-        # status = jegads.EG_deleteObject(ebody2)
-        # if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
-
     end
 
     # generate list of faces
