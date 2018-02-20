@@ -350,6 +350,7 @@ function rotTransCirc( xx::Vector{Float64}, yy::Vector{Float64}, b::Vector{Float
 
     if c > (-1.0-tol) && c < (-1.0+tol)
         # don't rotate, because it is just mirrored, but that should not matter
+        res = hcat( xx, yy, 0.0*yy )'
     else
 
         v = cross( a, b )
