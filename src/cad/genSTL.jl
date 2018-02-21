@@ -56,7 +56,7 @@ function compDist( mesh::MeshF,  lat::Lattice )
         #   check for min area
         inddel = Vector{Int64}(0)
         for ii in 1:length(mesh.n2e[kk])
-            if sqrt( lat.ar[ mesh.n2e[kk][ii] ] / π ) < 1e-14
+            if lat.ar[ mesh.n2e[kk][ii] ] < 0.0 || sqrt( lat.ar[ mesh.n2e[kk][ii] ] / π ) < 1.e-14
                 append!(inddel,ii)
             end
         end
@@ -78,10 +78,6 @@ function compDist( mesh::MeshF,  lat::Lattice )
             if edg_i1 == edg_i2
                 continue
             end
-            println("edg_i1 ", edg_i1)
-            println("edg_i2 ", edg_i2)
-            println("edg    ", edg)
-            println("mesh.n2e[kk]  ", mesh.n2e[kk])
             e1 = mesh.n2e[kk][ edg[ edg_i1 ] ]
             e2 = mesh.n2e[kk][ edg[ edg_i2 ] ]
 
@@ -112,7 +108,13 @@ function compDist( mesh::MeshF,  lat::Lattice )
         for jj in 1:length(edg)
             e1 = mesh.n2e[kk][ edg[ jj ] ]
             ind1 = find( mesh.e[e1,:] .== kk )[]
-            fdist[e1,ind1] = maximum( mindist[jj,:] )
+            maxdist = maximum( mindist[jj,:] )
+            if maxdist < 1e-14
+                # if two edges are exactly coplanar, maxdist will be zero.
+                # In that case, the convex hull computation will fail because both faces are the same
+                maxdist = 0.01*maximum( sqrt.(abs.(lat.ar[ mesh.n2e[kk] ])/π) )
+            end
+            fdist[e1,ind1] = maxdist
         end
 
     end
@@ -132,7 +134,7 @@ function genSTLcyls( mesh::MeshF,  lat::Lattice, fdist::Matrix{Float64}, n::Int6
 
     for ee in 1:size( mesh.e, 1 )
 
-        if sqrt( lat.ar[ee] / π ) < 1e-14
+        if lat.ar[ee] < 0.0 || sqrt( lat.ar[ee] / π ) < 1e-14
             continue
         end
 
@@ -180,10 +182,10 @@ function genSTLnods( mesh::MeshF, lat::Lattice, fdist::Matrix{Float64}, n::Int64
 
     for nn in 1:mesh.n
 
-        edges = mesh.n2e[nn]
+        edges = copy(mesh.n2e[nn])
         inddel = Vector{Int64}(0)
         for ii in 1:length(edges)
-            if sqrt( lat.ar[ edges[ii] ] / π ) < 1e-14
+            if lat.ar[ edges[ii] ] < 0.0 || sqrt( lat.ar[ edges[ii] ] / π ) < 1e-14
                 append!(inddel,ii)
             end
         end
@@ -240,17 +242,20 @@ function genSTLnods( mesh::MeshF, lat::Lattice, fdist::Matrix{Float64}, n::Int64
 
         end
 
-        # compute convex hull
-        ch = QHull.chull( verts )
-        faces = ch.simplices
+        if length(edges) > 1
+            # compute convex hull
+            ch = QHull.chull( verts )
+            faces = ch.simplices
 
-        centroid = mean( verts, 1 )[:] # need to compute centroid to determine whether or not normal is correct
+            centroid = mean( verts, 1 )[:] # need to compute centroid to determine whether or not normal is correct
 
-        ifaces = cleanupCHull( faces, verts, nvecs, centroid )
+            ifaces = cleanupCHull( faces, verts, nvecs, centroid )
 
-        # write STLs
-        for ff in ifaces
-            writeFacetSTLA( verts[ faces[ff],: ], fid::IOStream )
+            # write STLs
+            for ff in ifaces
+                writeFacetSTLA( verts[ faces[ff],: ], fid::IOStream )
+            end
+
         end
 
     end
