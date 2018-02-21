@@ -53,9 +53,18 @@ function compDist( mesh::MeshF,  lat::Lattice )
 
         # generate pairs of edges
         edg   = [i for i in 1:length(mesh.n2e[kk])]
-        edg1  = edg'
-        eedg  =   edg .+ 0*edg1
-        eedg1 = 0*edg .+   edg1
+        #   check for min area
+        inddel = Vector{Int64}(0)
+        for ii in 1:length(mesh.n2e[kk])
+            if sqrt( lat.ar[ mesh.n2e[kk][ii] ] / π ) < 1e-14
+                append!(inddel,ii)
+            end
+        end
+        edg0  = copy(edg)
+        deleteat!(edg0,inddel)
+        edg1  = edg0'
+        eedg  =   edg0 .+ 0*edg1
+        eedg1 = 0*edg0 .+   edg1
         pairs = hcat( eedg[:], eedg1[:] )
 
         upairs = unique(sort(pairs,2), 1) # unique pairs
@@ -69,6 +78,10 @@ function compDist( mesh::MeshF,  lat::Lattice )
             if edg_i1 == edg_i2
                 continue
             end
+            println("edg_i1 ", edg_i1)
+            println("edg_i2 ", edg_i2)
+            println("edg    ", edg)
+            println("mesh.n2e[kk]  ", mesh.n2e[kk])
             e1 = mesh.n2e[kk][ edg[ edg_i1 ] ]
             e2 = mesh.n2e[kk][ edg[ edg_i2 ] ]
 
@@ -119,6 +132,10 @@ function genSTLcyls( mesh::MeshF,  lat::Lattice, fdist::Matrix{Float64}, n::Int6
 
     for ee in 1:size( mesh.e, 1 )
 
+        if sqrt( lat.ar[ee] / π ) < 1e-14
+            continue
+        end
+
         nod1 = mesh.e[ee,1]
         nod2 = mesh.e[ee,2]
 
@@ -164,6 +181,13 @@ function genSTLnods( mesh::MeshF, lat::Lattice, fdist::Matrix{Float64}, n::Int64
     for nn in 1:mesh.n
 
         edges = mesh.n2e[nn]
+        inddel = Vector{Int64}(0)
+        for ii in 1:length(edges)
+            if sqrt( lat.ar[ edges[ii] ] / π ) < 1e-14
+                append!(inddel,ii)
+            end
+        end
+        deleteat!(edges,inddel)
 
         verts = Matrix{Float64}( length(edges)*n, 3 )
         nvecs = Vector{Vector{Float64}}( length(edges) )
@@ -194,7 +218,7 @@ function genSTLnods( mesh::MeshF, lat::Lattice, fdist::Matrix{Float64}, n::Int64
             xx = r * cos.( θ )
             yy = r * sin.( θ )
 
-            nvec         = vec / l
+            nvec = vec / l
 
             xx, yy, zz = rotTransCirc( xx, yy, nvec )
             #   translate from origin to end points
@@ -297,7 +321,6 @@ function cleanupCHull( faces::Vector{Vector{Int64}},   verts::Matrix{Float64},
         cnt += 1
 
         for jj in 1:length(nvecs)
-
             if dot( normal, nvecs[jj] ) > 1.0 - 1e-14
                 deleteat!(ifaces,cnt-1)
                 cnt -= 1
