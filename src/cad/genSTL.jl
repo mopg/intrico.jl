@@ -191,6 +191,7 @@ function genSTLnods( mesh::MeshF, lat::Lattice, fdist::Matrix{Float64}, n::Int64
         end
         deleteat!(edges,inddel)
 
+        # find vertices for convex hull
         verts = Matrix{Float64}( length(edges)*n, 3 )
         nvecs = Vector{Vector{Float64}}( length(edges) )
         cnt = 1
@@ -240,6 +241,44 @@ function genSTLnods( mesh::MeshF, lat::Lattice, fdist::Matrix{Float64}, n::Int64
             end
             cntnv += 1
 
+        end
+
+        # is this a sharp node?
+        sharp = true
+        nvecsum = [0.0,0.0,0.0]
+        for el in 1:length(edges)
+            nvecsum += nvecs[el]
+        end
+        for el in 1:length(edges)
+            dotp = dot( nvecsum, nvecs[el] )
+            if dotp <= 0.0
+                sharp = false
+                break
+            end
+        end
+        if all(abs.(nvecsum) .< 1e-14)
+            sharp = false
+        end
+
+        if sharp
+            # NOTE: NOT SURE IF THIS WILL AT SOME POINT COLLIDE WITH REST OF VERTICES
+            ρ = 0.5 # factor of radius
+            nnvecsum = nvecsum/norm(nvecsum)
+
+            rmax = sqrt( maximum( lat.ar[edges] ) / π )
+            r = ρ * rmax
+            xx = r * cos.( θ )
+            yy = r * sin.( θ )
+
+            xx, yy, zz = rotTransCirc( xx, yy, -nnvecsum )
+            #   translate from origin to end points
+            offset = sqrt( rmax^2 - r^2 )
+            xface = mesh.p[ nn, : ] - offset * nnvecsum
+            xx += xface[1]
+            yy += xface[2]
+            zz += xface[3]
+
+            verts = [verts; hcat(xx, yy, zz)]
         end
 
         if length(edges) > 1
