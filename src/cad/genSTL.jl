@@ -16,9 +16,48 @@ import QHull
 """
     genSTL( mesh::MeshF,  lat::Lattice, flname::String; n = 8, name = "object" )
 
-Generates a .stl file for the lattice in `mesh` with the areas defined in `lat`.
+Generates a binary .stl file for the lattice in `mesh` with the areas defined in `lat`.
 """
 function genSTL( mesh::MeshF,  lat::Lattice, flname::String; n = 8, name = "object" )
+
+    # compute correct distance from node
+    fdist = compDist( mesh, lat )
+
+    # open STL file
+    fid = open( flname, "w" )
+
+    # generate vertices for nodes
+    #   need to do that here because we need to know how many faces we have
+    factot, nface = genFacesNods( mesh, lat, fdist, n, fid )
+
+    println("nface ", nface )
+    println("factot[1][1] ", factot[1][1] )
+
+    nface += size(mesh.e,1) * n * 2
+
+    # write header
+    for jj in 1:80
+        write(fid,'s')
+    end
+    write(fid,UInt32(nface))
+
+    # generate STL for cylinders
+    genSTLcyls( mesh, lat, fdist, n, fid, Val{2} )
+
+    # write STL for nodes
+    genSTLBnods( factot, fid )
+
+    # close STL
+    close( fid )
+
+end
+
+"""
+    genSTLA( mesh::MeshF,  lat::Lattice, flname::String; n = 8, name = "object" )
+
+Generates an ASCII .stl file for the lattice in `mesh` with the areas defined in `lat`.
+"""
+function genSTLA( mesh::MeshF,  lat::Lattice, flname::String; n = 8, name = "object" )
 
     # 1. compute correct distance from node
     fdist = compDist( mesh, lat )
@@ -28,10 +67,10 @@ function genSTL( mesh::MeshF,  lat::Lattice, flname::String; n = 8, name = "obje
     @printf( fid, "solid %s\n", name )
 
     # generate STL for cylinders
-    genSTLcyls( mesh, lat, fdist, n, fid )
+    genSTLcyls( mesh, lat, fdist, n, fid, Val{1} )
 
     # generate STL for nodes
-    genSTLnods( mesh, lat, fdist, n, fid )
+    genSTLAnods( mesh, lat, fdist, n, fid )
 
     # close STL
     @printf( fid, "endsolid %s\n", name )
@@ -128,7 +167,7 @@ end
 
 Writes the STL facets for all cylinders.
 """
-function genSTLcyls( mesh::MeshF,  lat::Lattice, fdist::Matrix{Float64}, n::Int64, fid::IOStream )
+function genSTLcyls( mesh::MeshF,  lat::Lattice, fdist::Matrix{Float64}, n::Int64, fid::IOStream, stltype::DataType )
 
     θ = linspace( 0, 2*π, n )
 
@@ -165,20 +204,23 @@ function genSTLcyls( mesh::MeshF,  lat::Lattice, fdist::Matrix{Float64}, n::Int6
         yy2 = yy + x2[2]
         zz2 = zz + x2[3]
 
-        writeSTLcyl( xx1, yy1, zz1, xx2, yy2, zz2, fid )
+        writeSTLcyl( stltype, xx1, yy1, zz1, xx2, yy2, zz2, fid )
 
     end
 
 end
 
 """
-    genSTLnods( mesh::MeshF, lat::Lattice, fdist::Matrix{Float64}, n::Int64, fid::IOStream )
+    genFacesNods( mesh::MeshF, lat::Lattice, fdist::Matrix{Float64}, n::Int64, fid::IOStream )
 
-Writes the STL facets for all nodes.
+Writes the STL facets for all nodes for ASCII files.
 """
-function genSTLnods( mesh::MeshF, lat::Lattice, fdist::Matrix{Float64}, n::Int64, fid::IOStream )
+function genFacesNods( mesh::MeshF, lat::Lattice, fdist::Matrix{Float64}, n::Int64, fid::IOStream )
 
-    θ = linspace( 0, 2*π, n )
+    θ = linspace( 0, 2*π, n ).^1.0
+
+    factot = Vector{Vector{Matrix{Float64}}}( mesh.n )
+    nfac = 0
 
     for nn in 1:mesh.n
 
@@ -191,95 +233,69 @@ function genSTLnods( mesh::MeshF, lat::Lattice, fdist::Matrix{Float64}, n::Int64
         end
         deleteat!(edges,inddel)
 
-        # find vertices for convex hull
-        verts = Matrix{Float64}( length(edges)*n, 3 )
-        nvecs = Vector{Vector{Float64}}( length(edges) )
-        cnt = 1
-        cntnv = 1
+        (verts,nvecs) = compNodSingle( mesh, lat, edges, fdist, nn, n, θ )
 
-        for ee in edges
+        if length(edges) > 1
+            # compute convex hull
+            ch = QHull.chull( verts )
+            faces = ch.simplices
 
-            inod = find(mesh.e[ee,:] .== nn )[]
+            centroid = mean( verts, 1 )[:] # need to compute centroid to determine whether or not normal is correct
 
-            nod1 = mesh.e[ee,1]
-            nod2 = mesh.e[ee,2]
+            ifaces = cleanupCHull( faces, verts, nvecs, centroid )
 
-            vec = mesh.p[nod2,:] - mesh.p[nod1,:]
-
-            l = norm( vec )
-
-            # begin and start nodes of cylinder
-            xface = mesh.p[ nn, : ]
-            if inod == 1
-                xface += fdist[ee,1] / l * vec
-            else
-                xface -= fdist[ee,2] / l * vec
+            # save face vertices
+            factot[nn] = Vector{Matrix{Float64}}( length(ifaces) )
+            kk = 1
+            for ff in ifaces
+                factot[nn][kk] = verts[ faces[ff],: ]
+                kk   += 1
+                nfac += 1
             end
 
-            # generate points on end-faces
-            r = sqrt( lat.ar[ee] / π )
-            xx = r * cos.( θ )
-            yy = r * sin.( θ )
+        end
 
-            nvec = vec / l
+    end
 
-            xx, yy, zz = rotTransCirc( xx, yy, nvec )
-            #   translate from origin to end points
-            xx += xface[1]
-            yy += xface[2]
-            zz += xface[3]
+    return (factot, nfac)
 
-            verts[cnt:(cnt+n-1),1] = xx
-            verts[cnt:(cnt+n-1),2] = yy
-            verts[cnt:(cnt+n-1),3] = zz
+end
 
-            cnt += n
+"""
+    genSTLBnods( factot::Vector{Vector{Matrix{Float64}}}, fid::IOStream )
 
-            nvecs[cntnv] = nvec
-            if inod == 2
-                nvecs[cntnv] = -nvec
+Writes the STL facets for all nodes for binary files.
+"""
+function genSTLBnods( factot::Vector{Vector{Matrix{Float64}}}, fid::IOStream )
+
+    for f1 in factot, verts in f1
+        writeFacetSTLB( verts, fid::IOStream )
+    end
+
+end
+
+
+"""
+    genSTLAnods( mesh::MeshF, lat::Lattice, fdist::Matrix{Float64}, n::Int64, fid::IOStream )
+
+Writes the STL facets for all nodes for ASCII files.
+"""
+function genSTLAnods( mesh::MeshF, lat::Lattice, fdist::Matrix{Float64}, n::Int64, fid::IOStream )
+
+    θ = linspace( 0, 2*π, n ).^1.0
+
+    for nn in 1:mesh.n
+
+        edges = copy(mesh.n2e[nn])
+        inddel = Vector{Int64}(0)
+        for ii in 1:length(edges)
+            if lat.ar[ edges[ii] ] < 0.0 || sqrt( lat.ar[ edges[ii] ] / π ) < 1e-14
+                append!(inddel,ii)
             end
-            cntnv += 1
-
         end
+        deleteat!(edges,inddel)
 
-        # is this a sharp node?
-        sharp = true
-        nvecsum = [0.0,0.0,0.0]
-        for el in 1:length(edges)
-            nvecsum += nvecs[el]
-        end
-        for el in 1:length(edges)
-            dotp = dot( nvecsum, nvecs[el] )
-            if dotp <= 0.0
-                sharp = false
-                break
-            end
-        end
-        if all(abs.(nvecsum) .< 1e-14)
-            sharp = false
-        end
-
-        if sharp
-            # NOTE: NOT SURE IF THIS WILL AT SOME POINT COLLIDE WITH REST OF VERTICES
-            ρ = 0.5 # factor of radius
-            nnvecsum = nvecsum/norm(nvecsum)
-
-            rmax = sqrt( maximum( lat.ar[edges] ) / π )
-            r = ρ * rmax
-            xx = r * cos.( θ )
-            yy = r * sin.( θ )
-
-            xx, yy, zz = rotTransCirc( xx, yy, -nnvecsum )
-            #   translate from origin to end points
-            offset = sqrt( rmax^2 - r^2 )
-            xface = mesh.p[ nn, : ] - offset * nnvecsum
-            xx += xface[1]
-            yy += xface[2]
-            zz += xface[3]
-
-            verts = [verts; hcat(xx, yy, zz)]
-        end
+        (verts,nvecs) = compNodSingle( mesh, lat, edges, fdist, nn, n, θ )
 
         if length(edges) > 1
             # compute convex hull
@@ -301,30 +317,156 @@ function genSTLnods( mesh::MeshF, lat::Lattice, fdist::Matrix{Float64}, n::Int64
 
 end
 
+function compNodSingle( mesh::MeshF, lat::Lattice, edges::Vector{Int64},
+                        fdist::Matrix{Float64}, nn::Int64, n::Int64, θ::Vector{Float64} )
+
+    # find vertices for convex hull
+    verts = Matrix{Float64}( length(edges)*n, 3 )
+    nvecs = Vector{Vector{Float64}}( length(edges) )
+    cnt = 1
+    cntnv = 1
+
+    for ee in edges
+
+        inod = find(mesh.e[ee,:] .== nn )[]
+
+        nod1 = mesh.e[ee,1]
+        nod2 = mesh.e[ee,2]
+
+        vec = mesh.p[nod2,:] - mesh.p[nod1,:]
+
+        l = norm( vec )
+
+        # begin and start nodes of cylinder
+        xface = mesh.p[ nn, : ]
+        if inod == 1
+            xface += fdist[ee,1] / l * vec
+        else
+            xface -= fdist[ee,2] / l * vec
+        end
+
+        # generate points on end-faces
+        r = sqrt( lat.ar[ee] / π )
+        xx = r * cos.( θ )
+        yy = r * sin.( θ )
+
+        nvec = vec / l
+
+        xx, yy, zz = rotTransCirc( xx, yy, nvec )
+        #   translate from origin to end points
+        xx += xface[1]
+        yy += xface[2]
+        zz += xface[3]
+
+        verts[cnt:(cnt+n-1),1] = xx
+        verts[cnt:(cnt+n-1),2] = yy
+        verts[cnt:(cnt+n-1),3] = zz
+
+        cnt += n
+
+        nvecs[cntnv] = nvec
+        if inod == 2
+            nvecs[cntnv] = -nvec
+        end
+        cntnv += 1
+
+    end
+
+    # is this a sharp node?
+    sharp = true
+    nvecsum = [0.0,0.0,0.0]
+    for el in 1:length(edges)
+        nvecsum += nvecs[el]
+    end
+    for el in 1:length(edges)
+        dotp = dot( nvecsum, nvecs[el] )
+        if dotp <= 0.0
+            sharp = false
+            break
+        end
+    end
+    if all(abs.(nvecsum) .< 1e-14)
+        sharp = false
+    end
+
+    if sharp
+        # NOTE: NOT SURE IF THIS WILL AT SOME POINT COLLIDE WITH REST OF VERTICES
+        ρ = 0.5 # factor of radius
+        nnvecsum = nvecsum/norm(nvecsum)
+
+        rmax = sqrt( maximum( lat.ar[edges] ) / π )
+        r = ρ * rmax
+        xx = r * cos.( θ )
+        yy = r * sin.( θ )
+
+        xx, yy, zz = rotTransCirc( xx, yy, -nnvecsum )
+        #   translate from origin to end points
+        offset = sqrt( rmax^2 - r^2 )
+        xface = mesh.p[ nn, : ] - offset * nnvecsum
+        xx += xface[1]
+        yy += xface[2]
+        zz += xface[3]
+
+        verts = [verts; hcat(xx, yy, zz)]
+    end
+
+    return (verts,nvecs)
+
+end
+
 """
     writeSTLcyl( xx1::Vector{Float64}, yy1::Vector{Float64}, zz1::Vector{Float64},
                  xx2::Vector{Float64}, yy2::Vector{Float64}, zz2::Vector{Float64},
                  fid::IOStream )
 
-Writes the STL facets for one cylinder.
+Writes the STL facets for one cylinder for an ASCII STL file.
 """
-function writeSTLcyl( xx1::Vector{Float64}, yy1::Vector{Float64}, zz1::Vector{Float64},
-                      xx2::Vector{Float64}, yy2::Vector{Float64}, zz2::Vector{Float64},
-                      fid::IOStream )
+function writeSTLcyl( ::Type{Val{1}}, xx1::Vector{Float64}, yy1::Vector{Float64}, zz1::Vector{Float64},
+                                      xx2::Vector{Float64}, yy2::Vector{Float64}, zz2::Vector{Float64},
+                                      fid::IOStream )
 
     for kk in 1:size(xx1,1)-1
 
         # write facet 1
         vert = [ xx1[kk]   yy1[kk]   zz1[kk];
-                 xx2[kk]   yy2[kk]   zz2[kk];
-                 xx2[kk+1] yy2[kk+1] zz2[kk+1] ]
+                 xx2[kk+1] yy2[kk+1] zz2[kk+1];
+                 xx2[kk]   yy2[kk]   zz2[kk]]
         writeFacetSTLA( vert, fid )
 
         # write facet 2
-        vert = [ xx1[kk+1] yy1[kk+1] zz1[kk+1];
-                 xx1[kk]   yy1[kk]   zz1[kk];
-                 xx2[kk+1] yy2[kk+1] zz2[kk+1] ]
+        vert = [ xx1[kk+1]  yy1[kk+1] zz1[kk+1];
+                  xx2[kk+1] yy2[kk+1] zz2[kk+1];
+                  xx1[kk]   yy1[kk]   zz1[kk] ]
         writeFacetSTLA( vert, fid )
+
+    end
+
+end
+
+"""
+    writeSTLcyl( xx1::Vector{Float64}, yy1::Vector{Float64}, zz1::Vector{Float64},
+                 xx2::Vector{Float64}, yy2::Vector{Float64}, zz2::Vector{Float64},
+                 fid::IOStream )
+
+Writes the STL facets for one cylinder for a binary STL file.
+"""
+function writeSTLcyl( ::Type{Val{2}}, xx1::Vector{Float64}, yy1::Vector{Float64}, zz1::Vector{Float64},
+                                      xx2::Vector{Float64}, yy2::Vector{Float64}, zz2::Vector{Float64},
+                                      fid::IOStream )
+
+    for kk in 1:size(xx1,1) - 1
+
+        # write facet 1
+        vert = [ xx1[kk]   yy1[kk]   zz1[kk];
+                 xx2[kk+1] yy2[kk+1] zz2[kk+1];
+                 xx2[kk]   yy2[kk]   zz2[kk]]
+        writeFacetSTLB( vert, fid )
+
+        # write facet 2
+        vert = [ xx1[kk+1]  yy1[kk+1] zz1[kk+1];
+                  xx2[kk+1] yy2[kk+1] zz2[kk+1];
+                  xx1[kk]   yy1[kk]   zz1[kk] ]
+        writeFacetSTLB( vert, fid )
 
     end
 
@@ -381,10 +523,9 @@ end
 """
     writeFacetSTLA( vert::Matrix{Float64}, fid::IOStream )
 
-Writes one STL facet
+Writes one STL facet for ASCII file.
 """
 function writeFacetSTLA( vert::Matrix{Float64}, fid::IOStream )
-    # ASCII
 
     vec1   = vert[2,:] - vert[1,:]
     vec2   = vert[3,:] - vert[1,:]
@@ -398,6 +539,43 @@ function writeFacetSTLA( vert::Matrix{Float64}, fid::IOStream )
     @printf( fid, "  vertex %11.7E %11.7E %11.7E\n", vert[3,1], vert[3,2], vert[3,3] )
     @printf( fid, " endloop\n" )
     @printf( fid, "endfacet\n" )
+
+end
+
+"""
+    writeFacetSTLB( vert::Matrix{Float64}, fid::IOStream )
+
+Writes one STL facet for binary file.
+"""
+function writeFacetSTLB( vert::Matrix{Float64}, fid::IOStream )
+
+    vec1   = vert[2,:] - vert[1,:]
+    vec2   = vert[3,:] - vert[1,:]
+    vec1   = cross( vec1, vec2 )
+    normal = vec1 / norm(vec1)
+
+    # normals
+    write( fid, Float32( normal[1] ) )
+    write( fid, Float32( normal[2] ) )
+    write( fid, Float32( normal[3] ) )
+
+    # Vertex 1
+    write( fid, Float32( vert[1,1] ) )
+    write( fid, Float32( vert[1,2] ) )
+    write( fid, Float32( vert[1,3] ) )
+
+    # Vertex 2
+    write( fid, Float32( vert[2,1] ) )
+    write( fid, Float32( vert[2,2] ) )
+    write( fid, Float32( vert[2,3] ) )
+
+    # Vertex 3
+    write( fid, Float32( vert[3,1] ) )
+    write( fid, Float32( vert[3,2] ) )
+    write( fid, Float32( vert[3,3] ) )
+
+    # End facet
+    write( fid, UInt16(0) )
 
 end
 
