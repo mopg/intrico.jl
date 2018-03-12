@@ -30,22 +30,20 @@ function genSTL( mesh::MeshF,  lat::Lattice, flname::String; n = 8, name = "obje
     #   need to do that here because we need to know how many faces we have
     factot, nface = genFacesNods( mesh, lat, fdist, n, fid )
 
-    println("nface ", nface )
-    println("factot[1][1] ", factot[1][1] )
-
-    nface += size(mesh.e,1) * n * 2
+    nnzcyl = length( find(sqrt.( lat.ar / π ) .> 1e-14) ) # number of cylinders with nonzero radius
+    nface += nnzcyl * (n-1) * 2
 
     # write header
     for jj in 1:80
-        write(fid,'s')
+        write(fid,' ')
     end
     write(fid,UInt32(nface))
 
     # generate STL for cylinders
-    genSTLcyls( mesh, lat, fdist, n, fid, Val{2} )
+    writefc = genSTLcyls( mesh, lat, fdist, n, fid, Val{2} )
 
     # write STL for nodes
-    genSTLBnods( factot, fid )
+    writefn = genSTLBnods( factot, fid )
 
     # close STL
     close( fid )
