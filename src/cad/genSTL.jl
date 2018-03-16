@@ -118,8 +118,9 @@ function compDist( mesh::MeshF,  lat::Lattice )
             e1 = mesh.n2e[kk][ edg[ edg_i1 ] ]
             e2 = mesh.n2e[kk][ edg[ edg_i2 ] ]
 
-            # TEMP: CONFORM TO THE MAXIMUM RADIUS - should be able to handle different radii
-            rmax = maximum( [sqrt(lat.ar[ e1 ]/π), sqrt(lat.ar[ e2 ]/π)] )
+            # get different radii
+            r1 = sqrt(lat.ar[ e1 ]/π)
+            r2 = sqrt(lat.ar[ e2 ]/π)
 
             # compute angle between the edges
             nod1 = mesh.e[e1, find( mesh.e[e1,:] .!= kk )[] ]
@@ -132,10 +133,15 @@ function compDist( mesh::MeshF,  lat::Lattice )
             θ = acos( arg )
 
             # compute min distance
-            l = rmax / tan( θ/2 )
+            l2 = ( r1 + cos(θ)*r2 ) / sin(θ)
+            l1 = sin(θ) * r2 + l2 * cos(θ)
+            if θ > π - 1.e-6
+                l1 = 0.0
+                l2 = 0.0
+            end
 
-            mindist[ edg_i1, indcnt[edg_i1] ] = 1.01 * l # add 1% buffer
-            mindist[ edg_i2, indcnt[edg_i2] ] = 1.01 * l # add 1% buffer
+            mindist[ edg_i1, indcnt[edg_i1] ] = 1.001 * l1 # add 0.1% buffer
+            mindist[ edg_i2, indcnt[edg_i2] ] = 1.001 * l2 # add 0.1% buffer
             indcnt[edg_i1] += 1
             indcnt[edg_i2] += 1
 
@@ -235,7 +241,16 @@ function genFacesNods( mesh::MeshF, lat::Lattice, fdist::Matrix{Float64}, n::Int
 
         if length(edges) > 1
             # compute convex hull
-            ch = QHull.chull( verts )
+            ch = try
+                QHull.chull( verts )
+            catch y
+                println( "output ", y )
+                println( "node ", nn )
+                println( "edges ", edges )
+                println( "distances ", fdist[edges] )
+                error("Problems!!")
+            end
+
             faces = ch.simplices
 
             centroid = mean( verts, 1 )[:] # need to compute centroid to determine whether or not normal is correct
