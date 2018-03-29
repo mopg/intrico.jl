@@ -22,6 +22,7 @@ function genSTL( mesh::MeshF,  lat::Lattice, flname::String; n = 8, name = "obje
 
     # compute correct distance from node
     fdist = compDist( mesh, lat )
+    fdist .*= 0.0
 
     # open STL file
     fid = open( flname, "w" )
@@ -31,7 +32,7 @@ function genSTL( mesh::MeshF,  lat::Lattice, flname::String; n = 8, name = "obje
     factot, nface = genFacesNods( mesh, lat, fdist, n, fid )
 
     nnzcyl = length( find(sqrt.( lat.ar / π ) .> 1e-14) ) # number of cylinders with nonzero radius
-    nface += nnzcyl * (n-1) * 2
+    nface = nnzcyl * (n-1) * 2
 
     # write header
     for jj in 1:80
@@ -43,7 +44,7 @@ function genSTL( mesh::MeshF,  lat::Lattice, flname::String; n = 8, name = "obje
     writefc = genSTLcyls( mesh, lat, fdist, n, fid, Val{2} )
 
     # write STL for nodes
-    writefn = genSTLBnods( factot, fid )
+    # writefn = genSTLBnods( factot, fid )
 
     # close STL
     close( fid )
