@@ -476,6 +476,7 @@ function genFacesCyl( kk::Int64, mesh::MeshF,
                       fid::IOStream )
 
     nfac = 0
+    frac = 0.25
 
     e1 = mesh.e[kk,1]
     e2 = mesh.e[kk,2]
@@ -487,58 +488,100 @@ function genFacesCyl( kk::Int64, mesh::MeshF,
     println("node 2 ", e2)
     println("edge points 1 ", length( ptsCylEdge[1] ))
     println("edge points 2 ", length( ptsCylEdge[2] ))
-    for jj in 1:length( ptsCylEdge[1] )-1
 
-        testpt = ( ptsCylEdge[1][jj] + ptsCylEdge[1][jj+1] ) / 2. # check for minimum distance to middle of edge
+    n1 = length( ptsCylEdge[1] )
+    n2 = length( ptsCylEdge[2] )
 
-        # find minimum distance to node on other side
-        dist = 1e4
-        ind  = 0
-        for kk in 1:length( ptsCylEdge[2] )
-            cdist = norm( ptsCylEdge[2][kk] - testpt )
-            if cdist < dist + 1e-14
-                dist = cdist
-                ind = kk
-            end
-        end
+    # find which side has most points
+    i1 = 1
+    i2 = 2
+    if n2 < n1
+        i2 = 1
+        i1 = 2
+        n1 = (n1 + n2)
+        n2 = n1 - n2
+        n1 = n1 - n2
+    end
 
-        vert = [ ptsCylEdge[1][jj]';
-                 ptsCylEdge[1][jj+1]';
-                 ptsCylEdge[2][ind]' ]
+    ## generate the all facets, starting with the side with the fewest points
+    # find first index and generate first facet
+    ind0 = findMinDistInd( ptsCylEdge, i1, i2, 1, frac )
+    vert = [ ptsCylEdge[i1][1]';
+             ptsCylEdge[i1][2]';
+             ptsCylEdge[i2][ind0]' ]
+    writeFacetSTLB( vert, fid )
+    ind00 = ind0 # need to save this index to close loop
+    nfac += 1
+    # generate rest of facets (also for other ring)
+    for jj in 2:n1-1
+
+        ind1 = findMinDistInd( ptsCylEdge, i1, i2, jj, frac )
+
+        vert = [ ptsCylEdge[i1][jj]';
+                 ptsCylEdge[i1][jj+1]';
+                 ptsCylEdge[i2][ind1]' ]
 
         writeFacetSTLB( vert, fid )
         nfac += 1
 
-    end
-    # close patch
+        # generate other faces
+        # NOTE: due to ordering ind1 < ind0
+        if ind0 > ind1
+            for kk = 0:(ind0-ind1-1)
+                vert = [ ptsCylEdge[i2][ind1+kk]';
+                         ptsCylEdge[i2][ind1+kk+1]';
+                         ptsCylEdge[i1][jj]' ]
 
-    ## second edge
-    # loop over second edge
-    for jj in 1:length( ptsCylEdge[2] )-1
+                writeFacetSTLB( vert, fid )
+                nfac += 1
+            end
+        elseif ind0 < ind1
+            inds   = vcat(ind1:n2, 1:ind0)
+            indsp1 = vcat(ind1+1:n2, 1:ind0+1)
+            for kk in 1:length(inds)
+                vert = [ ptsCylEdge[i2][ inds[kk] ]';
+                         ptsCylEdge[i2][ indsp1[kk] ]';
+                         ptsCylEdge[i1][ jj ]' ]
 
-        testpt = ( ptsCylEdge[2][jj] + ptsCylEdge[2][jj+1] ) / 2. # check for minimum distance to middle of edge
-
-        # find minimum distance to node on other side
-        dist = 1e4
-        ind  = 0
-        for kk in 1:length( ptsCylEdge[1] )
-            cdist = norm( ptsCylEdge[1][kk] - testpt )
-            if cdist < dist + 1e-14
-                dist = cdist
-                ind = kk
+                writeFacetSTLB( vert, fid )
+                nfac += 1
             end
         end
 
-        vert = [ ptsCylEdge[2][jj]';
-                 ptsCylEdge[2][jj+1]';
-                 ptsCylEdge[1][ind]' ]
+        ind0 = ind1
+
+    end
+    # last patch
+    ind1 = ind00
+    for kk = 0:(ind0-ind1-1)
+        vert = [ ptsCylEdge[i2][ind1+kk]';
+                 ptsCylEdge[i2][ind1+kk+1]';
+                 ptsCylEdge[i1][1]' ]
 
         writeFacetSTLB( vert, fid )
         nfac += 1
-
     end
-    # close patch
 
     return nfac
 
+end
+
+function findMinDistInd( pts::Vector{Vector{Vector{Float64}}},
+                         ind1::Int64, ind2::Int64,
+                         jj::Int64, frac::Float64)
+
+    testpt = (1-frac) * pts[ind1][jj] + frac * pts[ind1][jj+1] # check for minimum distance to middle of edge
+
+    # find minimum distance to node on other side
+    dist = 1e4
+    ind  = 0 # look for first index, but after that only allow for + or - one (because should be ordered)
+    for kk in 1:length( pts[ind2] )
+        cdist = norm( pts[ind2][kk] - testpt )
+        if cdist < dist
+            dist = cdist
+            ind = kk
+        end
+    end
+
+    return ind
 end
