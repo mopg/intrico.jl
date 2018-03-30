@@ -132,32 +132,21 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
     eedg  =   edg0 .+ 0*edg1
     eedg1 = 0*edg0 .+   edg1
     pairs = hcat( eedg[:], eedg1[:] )
-    # println("pairs ", pairs)
-    # println("sort(pairs,2) ", sort(pairs,2))
 
     pairs = unique(sort(pairs,2), 1) # unique pairs
     pairs = pairs[ sortperm( pairs[:,1] + pairs[:,2]*100 ), : ] # ensure highest indices are last
     # TODO: don't need to do this for each loop, can just precompute this for n = 10 and then just take part of the unique pairs
     rmax = sqrt( maximum( lat.ar[ mesh.n2e[kk] ] ) / π )
-    println("node ", kk, " rmax ", rmax )
 
     # compute crossing point and normal vector
-    # intersec = Vector{Vector{Matrix{Float64}}}( length(edg) )
     normvec  = Vector{Vector{Vector{Float64}}}( length(edg) )
     tangvec  = Vector{Vector{Vector{Float64}}}( length(edg) )
-    # indedges = Vector{Vector{Int64}}( length(edg) )
     lvmax = fill( 0.0, length(edg) )
     for jj in 1:length(edg)
-        # intersec[jj] = Vector{Matrix{Float64}}( length(edg)-1 )
         normvec[jj]  = Vector{Vector{Float64}}( length(edg)-1 )
         tangvec[jj]  = Vector{Vector{Float64}}( length(edg)-1 )
-        # indedges[jj] = Vector{Int64}( length(edg)-1 )
-        # lv[jj] = Vector{Float64}( length(edg)-1 )
     end
     indcnt = fill(1, length(edg) )
-    # println("size pairs ", size(pairs))
-    # println("length edg ", length(edg))
-    # println( "pairs ", pairs )
     for jj in 1:size(pairs,1)
         edg_i1 = pairs[jj,1]
         edg_i2 = pairs[jj,2]
@@ -166,10 +155,6 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
         end
         e1 = mesh.n2e[kk][ edg[ edg_i1 ] ]
         e2 = mesh.n2e[kk][ edg[ edg_i2 ] ]
-
-        # get different radii
-        # r1 = sqrt(lat.ar[ e1 ]/π)
-        # r2 = sqrt(lat.ar[ e2 ]/π)
 
         # compute angle between the edges
         nod1 = mesh.e[e1, find( mesh.e[e1,:] .!= kk )[] ]
@@ -182,13 +167,6 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
         arg = minimum( ( 1.0, arg) ) # guard for round-off errors
         arg = maximum( (-1.0, arg) ) # guard for round-off errors
         θ = acos( arg )
-
-        # println("e1 ", e1)
-        # println("e2 ", e2)
-        # println("vec1 ", vec1)
-        # println("vec2 ", vec2)
-        # println("θ ", θ)
-        # println("rmax ", rmax)
 
         # compute absolute distance between node center and intersection
         lv = rmax / tan( θ/2 ) # offset such that rods do not collide
@@ -211,9 +189,6 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
             tangvec[edg_i2][ indcnt[edg_i2] ] = (vec1+vec2) / magdiff
         end
 
-        # println("normvec ", (vec1-vec2) / magdiff )
-        # println(" ")
-
         # normal vectors
         normvec[edg_i1][ indcnt[edg_i1] ] = (vec1-vec2) / magdiff
         normvec[edg_i2][ indcnt[edg_i2] ] = (vec2-vec1) / magdiff
@@ -228,8 +203,6 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
         lvmax[ii] += 0.05 * norm( mesh.p[ mesh.e[mesh.n2e[kk][edg[ii]],1],: ] - mesh.p[ mesh.e[mesh.n2e[kk][edg[ii]],2],: ] )
     end
 
-
-
     # loop over each edge
     for ee in 1:length(edg)
 
@@ -242,8 +215,6 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
         testpt   = mesh.p[ nod, : ] - mesh.p[ kk, : ] # distance to this point is measured to determine which is closer, distance is relative to current node
         nunique  = uniqueNumPairs( length(edg)-1 )
         intersec = Vector{Vector{Float64}}( 2*(nunique - (length(edg)-1)) + 1)
-        # println("normvec[ee] ", normvec[ee])
-        # println("nunique ", nunique)
         nact = 0
         for jj in 1:nunique # note: number of planes is length(edg)-1, so can reuse part of upairs
 
@@ -253,16 +224,13 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
             ip1 = pairs[jj,1]
             ip2 = pairs[jj,2]
 
-            # println("normal vector 1 ", normvec[ee][ ip1 ] )
-            # println("normal vector 2 ", normvec[ee][ ip2 ] )
             lvec  = cross( normvec[ee][ ip1 ], normvec[ee][ ip2 ] ) # always going through the node center (because both planes go through that point)
-            # println("lvec (org) ", lvec)
             nrmperp  = norm( lvec - dot( lvec, evec )*evec )
-            # println("nrmperp ", nrmperp)
+
             # check first point
             lvec .*=  rmax / nrmperp
             # check ...
-            # println("lvec ", lvec)
+
             act = checkPointAct( lvec, testpt, normvec[ee], evec )
 
             if act
@@ -279,27 +247,22 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
                 nact += 1
                 intersec[nact] = copy(lvec)
             end
-            # println("act ", act)
 
         end
 
         ## order points counterclockwise
         # pick first point as ϕ = 0
-        # println("intersec ",intersec)
         zerovec   = intersec[1] - dot( intersec[1], evec ) * evec
         zerovec ./= norm(zerovec)
         # println( "zerovec ", zerovec )
         ϕ = fill(0.0,nact)
         for jj in 2:nact
             currnvec = intersec[jj] - dot( intersec[jj], evec ) * evec
-            # println( "currnvec ", currnvec )
-            # println( "arg ", dot(zerovec,currnvec) / norm(currnvec) )
             ϕ[jj] = acos( max( min( dot(zerovec,currnvec) / norm(currnvec), 1.0), -1.0 ) )
             if dot( cross( zerovec, currnvec ), evec ) < 0.0
                 ϕ[jj] = 2*π - ϕ[jj]
             end
         end
-        # println("ϕ ", ϕ)
 
         # sort based on ϕ
         angleind   = sortperm( ϕ )
@@ -313,29 +276,15 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
                 corrind[nact] = jj+1
             end
         end
-        # println("angleind ", angleind)
-        # println("corrind ", corrind)
-        # intersec[1:nact]  = intersec[ corrind[1:nact] ] # TEMP
         ϕ = ϕ[ corrind[1:nact] ]
 
         # add last point to array to close the loop
-        # intersec[nact+1]  = copy(intersec[1])
         append!( ϕ, 2*π )
-
-        # println("ϕ ", ϕ)
         nact += 1
-
-        # TEMP print everything
-        # println("active pts for ", kk, " ", e1)
-        # for jj in 1:nact-1
-        #     println(jj, " ", intersec[jj])
-        # end
-        # println(" ")
 
         ## Generate points along cuts
         perpvec = cross(evec,zerovec)
         perpvec ./= norm(perpvec)
-        # println("normact ", normact)
 
         iedge = find( mesh.e[e1,:] .== kk )[]
         ptsCylEdge[e1][iedge] = Vector{Vector{Float64}}(0)
@@ -474,9 +423,6 @@ function genFacesCyl( cyl::Int64, mesh::MeshF,
     end
     # last patch
     ind1 = ind00
-    # println("cylinder ", cyl)
-    # println("ind1 ", ind1)
-    # println("ind0 ", ind0)
     if ind0 > ind1
         for kk = 0:(ind0-ind1-1)
             vert = [ ptsCylEdge[i2][ ind1+kk ]';
@@ -498,7 +444,6 @@ function genFacesCyl( cyl::Int64, mesh::MeshF,
             nfac += 1
         end
     end
-    # println(" ")
 
     return nfac
 
@@ -517,24 +462,13 @@ function checkPointAct( currpt::Vector{Float64}, testpt::Vector{Float64},
         ipt = currpt + d * evec
 
         cdist = norm( ipt - testpt )
-        # println("tvec ", tvec)
-        # println("ipt ", ipt)
-        # println("cdist ", cdist)
-        # if dot(tvec, ipt - mesh.p[kk,:]) < 0.0 # on concave side
-        #     if cdist > dist
-        #         # this point is further
-        #         dist = cdist
-        #     end
-        # else # on convex side
+
         if cdist < dist
             # this point is closer
             dist = cdist
         end
-        # end
     end
-    # println("fin dist ", dist)
-    # println("distorg  ", distorg)
-    # println(" ")
+
     # is point active? Only if new distance is same as original distance
     if abs(dist - distorg) < 1e-14
         act = true
@@ -547,30 +481,20 @@ end
 function findNormPlane( currpt::Vector{Float64}, testpt::Vector{Float64},
                         normvec::Vector{Vector{Float64}}, evec::Vector{Float64} )
 
-    # println("currpt ", currpt)
     dist = 3*norm( currpt - testpt )
     ind  = 0
-    # println("dist ", dist)
+
     for ii in 1:length(normvec)
         # loop over intersecting planes
         d = dot( - currpt, normvec[ii] ) / dot( evec, normvec[ii] ) # scalar value for which line intersects plane
         ipt = currpt + d * evec
 
         cdist = norm( ipt - testpt )
-        # println("tvec ", tvec)
-        # println("ipt ", ipt)
-        # println("cdist ", cdist)
-        # if dot(tvec, ipt - mesh.p[kk,:]) < 0.0 # on concave side
-        #     if cdist > dist
-        #         # this point is further
-        #         dist = cdist
-        #     end
-        # else # on convex side
+
         if cdist < dist
             # this point is closer
             dist = cdist
             ind  = ii
-            # println("ind ", ind)
         end
         # end
     end
