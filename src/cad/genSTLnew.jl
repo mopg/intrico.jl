@@ -99,7 +99,10 @@ function genFacesNodsCyl( mesh::MeshF, lat::Lattice, n::Int64, fid::IOStream )
 
     # generate cylinders
     for kk in 1:size(mesh.e,1)
-        nfac += genFacesCyl( kk, mesh, ptsCylEdge[kk], fid )
+        println("kk ", kk)
+        if lat.ar[ kk ] > 0.0 || sqrt( lat.ar[ kk ] / π ) > 1.e-14
+            nfac += genFacesCyl( kk, mesh, ptsCylEdge[kk], fid )
+        end
     end
 
     return nfac
@@ -126,8 +129,14 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
             append!(inddel,ii)
         end
     end
-    edg0  = copy(edg)
-    deleteat!(edg0,inddel)
+    edg0     = [i for i in 1:length(edg)-length(inddel)]
+    indedges = [jj for jj in 1:length(edg)]
+    deleteat!(indedges,inddel)
+
+    if length(edg0) == 0 # if all nodes are zero thickness, can skip the whole function
+        return 0
+    end
+
     edg1  =   edg0'
     eedg  =   edg0 .+ 0*edg1
     eedg1 = 0*edg0 .+   edg1
@@ -143,13 +152,13 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
     # tangvec  = Vector{Vector{Vector{Float64}}}( length(edg) )
     lvmax = fill( 0.0, length(edg) )
     for jj in 1:length(edg)
-        normvec[jj]  = Vector{Vector{Float64}}( length(edg)-1 )
+        normvec[jj]  = Vector{Vector{Float64}}( length(edg0)-1 )
         # tangvec[jj]  = Vector{Vector{Float64}}( length(edg)-1 )
     end
     indcnt = fill(1, length(edg) )
     for jj in 1:size(pairs,1)
-        edg_i1 = pairs[jj,1]
-        edg_i2 = pairs[jj,2]
+        edg_i1 = indedges[ pairs[jj,1] ]
+        edg_i2 = indedges[ pairs[jj,2] ]
         if edg_i1 == edg_i2
             continue
         end
@@ -177,18 +186,6 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
         magdiff = norm(vec1 - vec2)
         magave  = norm(vec1 + vec2)
 
-        # if magave < 1e-14
-        #     # two rods are exactly opposite
-        #
-        #     # tangent vector
-        #     tangvec[edg_i1][ indcnt[edg_i1] ] = crossvec1 / norm(crossvec1)
-        #     tangvec[edg_i2][ indcnt[edg_i2] ] = crossvec2 / norm(crossvec2)
-        # else
-        #     # tangent vector
-        #     tangvec[edg_i1][ indcnt[edg_i1] ] = (vec1+vec2) / magdiff
-        #     tangvec[edg_i2][ indcnt[edg_i2] ] = (vec1+vec2) / magdiff
-        # end
-
         # normal vectors
         normvec[edg_i1][ indcnt[edg_i1] ] = (vec1-vec2) / magdiff
         normvec[edg_i2][ indcnt[edg_i2] ] = (vec2-vec1) / magdiff
@@ -204,7 +201,8 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
     end
 
     # loop over each edge
-    for ee in 1:length(edg)
+    for eecnt in 1:length(edg0)
+        ee = indedges[ eecnt ]
 
         e1     = mesh.n2e[kk][ edg[ ee ] ]
         nod    = mesh.e[e1, find( mesh.e[e1,:] .!= kk )[] ]
@@ -213,41 +211,64 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
 
         # find intersections between planes and check if they are active
         testpt   = mesh.p[ nod, : ] - mesh.p[ kk, : ] # distance to this point is measured to determine which is closer, distance is relative to current node
-        nunique  = uniqueNumPairs( length(edg)-1 )
-        intersec = Vector{Vector{Float64}}( 2*(nunique - (length(edg)-1)) + 1)
+        nunique  = uniqueNumPairs( length(edg0)-1 )
+        intersec = Vector{Vector{Float64}}( max( 2*(nunique - (length(edg0)-1)) + 1, 2 ) )
 
         nact = 0
-        for jj in 1:nunique # note: number of planes is length(edg)-1, so can reuse part of upairs
+        if nunique == 1 # if nunique is 1, there are no intersections
 
-            if pairs[jj,1] == pairs[jj,2]
-                continue
-            end
-            ip1 = pairs[jj,1]
-            ip2 = pairs[jj,2]
+            indother    = find( indedges .!= ee )[]
+            eother      = mesh.n2e[kk][ edg[ indedges[ indother ] ] ]
+            nodother    = mesh.e[eother, find( mesh.e[eother,:] .!= kk )[] ]
+            evecother   = mesh.p[ nodother, : ] - mesh.p[ kk, : ]
+            evecother ./= norm( evecother )
 
-            lvec     = cross( normvec[ee][ ip1 ], normvec[ee][ ip2 ] ) # always going through the node center (because both planes go through that point)
-            nrmperp  = norm( lvec - dot( lvec, evec )*evec )
-
-            # check first point
-            lvec .*=  rmax / nrmperp
-            # check ...
-
-            act = checkPointAct( lvec, testpt, normvec[ee], evec )
-
-            if act
-                nact += 1
-                intersec[nact] = copy(lvec)
+            lvec = evec + evecother
+            if norm(lvec) < 1e-14
+                lvec = normvec[ee][1]
             end
 
-            # check second point
-            lvec .*= -1.0
-            # check ...
-            act = checkPointAct( lvec, testpt, normvec[ee], evec )
-            if act
-                nact += 1
-                intersec[nact] = copy(lvec)
-            end
+            nrmperp = norm( lvec - dot( lvec, evec )*evec )
+            lvec  .*=  rmax / nrmperp
 
+            nact += 1
+            intersec[nact] =  1.0 * lvec
+
+            nact += 1
+            intersec[nact] = -1.0 * lvec
+
+        else
+            for jj in 1:nunique # note: number of planes is length(edg)-1, so can reuse part of upairs
+
+                if pairs[jj,1] == pairs[jj,2]
+                    continue
+                end
+                ip1 = pairs[jj,1]
+                ip2 = pairs[jj,2]
+
+                lvec     = cross( normvec[ee][ ip1 ], normvec[ee][ ip2 ] ) # always going through the node center (because both planes go through that point)
+                nrmperp  = norm( lvec - dot( lvec, evec )*evec )
+
+                # check first point
+                lvec .*=  rmax / nrmperp
+
+                act = checkPointAct( lvec, testpt, normvec[ee], evec )
+
+                if act
+                    nact += 1
+                    intersec[nact] = copy(lvec)
+                end
+
+                # check second point
+                lvec .*= -1.0
+                # check ...
+                act = checkPointAct( lvec, testpt, normvec[ee], evec )
+                if act
+                    nact += 1
+                    intersec[nact] = copy(lvec)
+                end
+
+            end
         end
 
         ## order points counterclockwise
@@ -481,6 +502,7 @@ function findNormPlane( currpt::Vector{Float64}, testpt::Vector{Float64},
 
     dist = 3*norm( currpt - testpt )
     ind  = 0
+    println("normvec ", normvec)
 
     for ii in 1:length(normvec)
         # loop over intersecting planes
