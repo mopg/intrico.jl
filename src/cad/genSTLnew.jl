@@ -115,6 +115,8 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
                       ptsCylEdge::Vector{Vector{Vector{Vector{Float64}}}},
                       fid::IOStream )
 
+    println("node ", kk)
+
     nfac = 0
 
     # generate pairs of edges
@@ -140,11 +142,11 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
 
     # compute crossing point and normal vector
     normvec  = Vector{Vector{Vector{Float64}}}( length(edg) )
-    tangvec  = Vector{Vector{Vector{Float64}}}( length(edg) )
+    # tangvec  = Vector{Vector{Vector{Float64}}}( length(edg) )
     lvmax = fill( 0.0, length(edg) )
     for jj in 1:length(edg)
         normvec[jj]  = Vector{Vector{Float64}}( length(edg)-1 )
-        tangvec[jj]  = Vector{Vector{Float64}}( length(edg)-1 )
+        # tangvec[jj]  = Vector{Vector{Float64}}( length(edg)-1 )
     end
     indcnt = fill(1, length(edg) )
     for jj in 1:size(pairs,1)
@@ -177,17 +179,17 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
         magdiff = norm(vec1 - vec2)
         magave  = norm(vec1 + vec2)
 
-        if magave < 1e-14
-            # two rods are exactly opposite
-
-            # tangent vector
-            tangvec[edg_i1][ indcnt[edg_i1] ] = crossvec1 / norm(crossvec1)
-            tangvec[edg_i2][ indcnt[edg_i2] ] = crossvec2 / norm(crossvec2)
-        else
-            # tangent vector
-            tangvec[edg_i1][ indcnt[edg_i1] ] = (vec1+vec2) / magdiff
-            tangvec[edg_i2][ indcnt[edg_i2] ] = (vec1+vec2) / magdiff
-        end
+        # if magave < 1e-14
+        #     # two rods are exactly opposite
+        #
+        #     # tangent vector
+        #     tangvec[edg_i1][ indcnt[edg_i1] ] = crossvec1 / norm(crossvec1)
+        #     tangvec[edg_i2][ indcnt[edg_i2] ] = crossvec2 / norm(crossvec2)
+        # else
+        #     # tangent vector
+        #     tangvec[edg_i1][ indcnt[edg_i1] ] = (vec1+vec2) / magdiff
+        #     tangvec[edg_i2][ indcnt[edg_i2] ] = (vec1+vec2) / magdiff
+        # end
 
         # normal vectors
         normvec[edg_i1][ indcnt[edg_i1] ] = (vec1-vec2) / magdiff
@@ -215,6 +217,8 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
         testpt   = mesh.p[ nod, : ] - mesh.p[ kk, : ] # distance to this point is measured to determine which is closer, distance is relative to current node
         nunique  = uniqueNumPairs( length(edg)-1 )
         intersec = Vector{Vector{Float64}}( 2*(nunique - (length(edg)-1)) + 1)
+        # println("ee ",ee)
+        # println("normvec[ee] ", normvec[ee])
         nact = 0
         for jj in 1:nunique # note: number of planes is length(edg)-1, so can reuse part of upairs
 
@@ -224,7 +228,8 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
             ip1 = pairs[jj,1]
             ip2 = pairs[jj,2]
 
-            lvec  = cross( normvec[ee][ ip1 ], normvec[ee][ ip2 ] ) # always going through the node center (because both planes go through that point)
+            # println( "ip1 ", ip1, " ip2 ", ip2 )
+            lvec     = cross( normvec[ee][ ip1 ], normvec[ee][ ip2 ] ) # always going through the node center (because both planes go through that point)
             nrmperp  = norm( lvec - dot( lvec, evec )*evec )
 
             # check first point
@@ -298,7 +303,9 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
             normcurr = normvec[ee][normind]
 
             Δϕ = ϕ[jj+1] - ϕ[jj]
-            np = max( convert( Int64, ceil( Δϕ/(2*π) * nn ) + 1 ), 2 ) # ensure we have at least two points
+            np = max( convert( Int64, ceil( (Δϕ-1e-5)/(2*π) * nn ) + 1 ), 2 ) # ensure we have at least two points
+
+            println( "edge ", mesh.n2e[kk][edg[ee]], " ϕ[jj] ", ϕ[jj], " ϕ[jj+1] ", ϕ[jj+1], " np ", np )
 
             ϕcurr = linspace( ϕ[jj], ϕ[jj+1], np )
 
@@ -336,6 +343,8 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
         end
 
     end
+
+    println(" ")
 
     return nfac
 
