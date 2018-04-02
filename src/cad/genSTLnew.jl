@@ -115,8 +115,6 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
                       ptsCylEdge::Vector{Vector{Vector{Vector{Float64}}}},
                       fid::IOStream )
 
-    println("node ", kk)
-
     nfac = 0
 
     # generate pairs of edges
@@ -217,8 +215,7 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
         testpt   = mesh.p[ nod, : ] - mesh.p[ kk, : ] # distance to this point is measured to determine which is closer, distance is relative to current node
         nunique  = uniqueNumPairs( length(edg)-1 )
         intersec = Vector{Vector{Float64}}( 2*(nunique - (length(edg)-1)) + 1)
-        # println("ee ",ee)
-        # println("normvec[ee] ", normvec[ee])
+
         nact = 0
         for jj in 1:nunique # note: number of planes is length(edg)-1, so can reuse part of upairs
 
@@ -228,7 +225,6 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
             ip1 = pairs[jj,1]
             ip2 = pairs[jj,2]
 
-            # println( "ip1 ", ip1, " ip2 ", ip2 )
             lvec     = cross( normvec[ee][ ip1 ], normvec[ee][ ip2 ] ) # always going through the node center (because both planes go through that point)
             nrmperp  = norm( lvec - dot( lvec, evec )*evec )
 
@@ -242,7 +238,6 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
                 nact += 1
                 intersec[nact] = copy(lvec)
             end
-            # println("act ", act)
 
             # check second point
             lvec .*= -1.0
@@ -259,7 +254,6 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
         # pick first point as ϕ = 0
         zerovec   = intersec[1] - dot( intersec[1], evec ) * evec
         zerovec ./= norm(zerovec)
-        # println( "zerovec ", zerovec )
         ϕ = fill(0.0,nact)
         for jj in 2:nact
             currnvec = intersec[jj] - dot( intersec[jj], evec ) * evec
@@ -305,8 +299,6 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
             Δϕ = ϕ[jj+1] - ϕ[jj]
             np = max( convert( Int64, ceil( (Δϕ-1e-5)/(2*π) * nn ) + 1 ), 2 ) # ensure we have at least two points
 
-            println( "edge ", mesh.n2e[kk][edg[ee]], " ϕ[jj] ", ϕ[jj], " ϕ[jj+1] ", ϕ[jj+1], " np ", np )
-
             ϕcurr = linspace( ϕ[jj], ϕ[jj+1], np )
 
             # first part
@@ -343,8 +335,6 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
         end
 
     end
-
-    println(" ")
 
     return nfac
 
@@ -415,8 +405,8 @@ function genFacesCyl( cyl::Int64, mesh::MeshF,
                 nfac += 1
             end
         elseif ind0 < ind1
-            inds   = vcat(ind1:n2, 1:ind0)
-            indsp1 = vcat(ind1+1:n2, 1:ind0+1)
+            inds   = vcat(ind1:n2-1, 1:ind0-1)
+            indsp1 = vcat(ind1+1:n2-1, 1:ind0)
             for kk in 1:length(inds)
                 vert = [ ptsCylEdge[i2][ inds[kk] ]';
                          ptsCylEdge[i2][ indsp1[kk] ]';
@@ -461,7 +451,6 @@ end
 function checkPointAct( currpt::Vector{Float64}, testpt::Vector{Float64},
                         normvec::Vector{Vector{Float64}}, evec::Vector{Float64} )
 
-    # println("currpt ", currpt)
     dist    =  norm( currpt - testpt )
     distorg = dist
     act = false
