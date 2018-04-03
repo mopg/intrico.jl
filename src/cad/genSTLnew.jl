@@ -18,9 +18,6 @@ Generates a binary .stl file for the lattice in `mesh` with the areas defined in
 """
 function genSTLnew( mesh::MeshF,  lat::Lattice, flname::String; n = 8, name = "object" )
 
-    # # # compute correct distance from node
-    # fdist = compDist( mesh, lat )
-
     # open STL file
     fid = open( flname, "w" )
 
@@ -99,7 +96,6 @@ function genFacesNodsCyl( mesh::MeshF, lat::Lattice, n::Int64, fid::IOStream )
 
     # generate cylinders
     for kk in 1:size(mesh.e,1)
-        println("kk ", kk)
         if lat.ar[ kk ] > 0.0 || sqrt( lat.ar[ kk ] / π ) > 1.e-14
             nfac += genFacesCyl( kk, mesh, ptsCylEdge[kk], fid )
         end
@@ -502,7 +498,6 @@ function findNormPlane( currpt::Vector{Float64}, testpt::Vector{Float64},
 
     dist = 3*norm( currpt - testpt )
     ind  = 0
-    println("normvec ", normvec)
 
     for ii in 1:length(normvec)
         # loop over intersecting planes
@@ -545,9 +540,7 @@ end
 
 function uniqueNumPairs( n::Int64 )
     #   (n + k - 1) nCr (k)
-    # which is
-    #   (n + k - 1)! / ( k! * (n-1)! )
     # here k = 2, so
-    #   (n + 1)! / ( 2! * (n-1)! ) = (n + 1)! / ( 2 * (n-1)! )
-    return convert( Int64, factorial( n+1 ) / ( 2*factorial( n-1 ) ) )
+    #   (n + 1) nCr (k)
+    return binomial( n + 1, 2 )
 end
