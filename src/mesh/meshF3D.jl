@@ -35,6 +35,8 @@ struct MeshF3D <: MeshF
 
   n2e::Vector{Vector{Int64}} # Node to edge connectivity
 
+  boundtags::Vector{String} # boundary tags
+
 end
 
 """
@@ -48,7 +50,8 @@ function MeshF( mesh::luteos.Mesh3D )
 
   n2e = genNEconnec3D( e, mesh.n )
 
-  MeshF3D( 3, mesh.n, mesh.p, mesh.t, mesh.t2f, mesh.f, mesh.fb, e, mesh.nodes, n2e )
+  MeshF3D( 3, mesh.n, mesh.p, mesh.t, mesh.t2f, mesh.f, mesh.fb, e,
+           mesh.nodes, n2e, mesh.boundtags )
 
 end
 
@@ -60,9 +63,9 @@ Constructor for frame that reads in a mesh from `name`.
 function MeshF3D( name::String )
 
   if name[end-3:end] == ".su2"
-    (p_, t_, bel_, tags_) = luteos.readSU2_3D( name )
+    (p_, t_, bel_, tags_ ) = luteos.readSU2_3D( name )
   elseif name[end-4:end] == ".mesh" # FEFLOA
-    (p_, t_, bel_ ) = luteos.readFEFLOA_3D( name )
+    (p_, t_, bel_, tags_ ) = luteos.readFEFLOA_3D( name )
   else
     error("Unknown mesh type")
   end
@@ -77,7 +80,7 @@ function MeshF3D( name::String )
 
   n2e = genNEconnec3D( e_, n_ )
 
-  MeshF3D( 3, n_, p_, t_, t2f_, f_, fb_, e_, nodes_, n2e )
+  MeshF3D( 3, n_, p_, t_, t2f_, f_, fb_, e_, nodes_, n2e, tags_ )
 
 end
 

@@ -34,6 +34,8 @@ struct MeshF2D <: MeshF
                           #  compute Jacobian on face
     n2e::Vector{Vector{Int64}} # Node to edge connectivity
 
+    boundtags::Vector{String} # boundary tags
+
 end
 
 """
@@ -45,7 +47,7 @@ function MeshF( mesh::luteos.Mesh2D )
 
     n2e = genNEconnec2D( mesh.f, mesh.n )
 
-    MeshF2D( 2, mesh.n, mesh.p, mesh.t, mesh.t2f, mesh.f, mesh.fb, mesh.nodes, n2e )
+    MeshF2D( 2, mesh.n, mesh.p, mesh.t, mesh.t2f, mesh.f, mesh.fb, mesh.nodes, n2e, mesh.boundtags )
 
 end
 
@@ -59,9 +61,9 @@ function MeshF2D( name::String )
     if name[end-3:end] == ".su2"
         (p_, t_, bel_, tags_) = luteos.readSU2_2D( name )
     elseif name[end-3:end] == ".msh" # BAMG
-        (p_, t_, bel_ ) = luteos.readBAMG( name )
+        (p_, t_, bel_, tags_ ) = luteos.readBAMG( name )
     elseif name[end-4:end] == ".mesh" # FEFLOA
-        (p_, t_, bel_ ) = luteos.readFEFLOA_2D( name )
+        (p_, t_, bel_, tags_ ) = luteos.readFEFLOA_2D( name )
     else
         error("MeshF2D: Unknown mesh type")
     end
@@ -74,7 +76,7 @@ function MeshF2D( name::String )
 
     n2e_ = genNEconnec2D( f_, n_ )
 
-    MeshF2D( 2, n_, p_, t_, t2f_, f_, fb_, nodes_, n2e_ )
+    MeshF2D( 2, n_, p_, t_, t2f_, f_, fb_, nodes_, n2e_, tags_ )
 
 end
 
