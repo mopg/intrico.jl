@@ -16,7 +16,7 @@
 
 Generates a binary .stl file for the lattice in `mesh` with the areas defined in `lat`.
 """
-function genSTLnew( mesh::MeshF,  lat::Lattice, flname::String; n = 8, name = "object" )
+function genSTLnew( mesh::MeshF,  lat::Lattice, flname::String; n::Int64 = 8 )
 
     # open STL file
     fid = open( flname, "w" )
@@ -48,32 +48,6 @@ function genSTLnew( mesh::MeshF,  lat::Lattice, flname::String; n = 8, name = "o
 end
 
 """
-    genSTLA( mesh::MeshF,  lat::Lattice, flname::String; n = 8, name = "object" )
-
-Generates an ASCII .stl file for the lattice in `mesh` with the areas defined in `lat`.
-"""
-function genSTLAnew( mesh::MeshF,  lat::Lattice, flname::String; n = 8, name = "object" )
-
-    # 1. compute correct distance from node
-    fdist = compDist( mesh, lat )
-
-    # open STL file
-    fid = open( flname, "w" )
-    @printf( fid, "solid %s\n", name )
-
-    # generate STL for cylinders
-    genSTLcyls( mesh, lat, fdist, n, fid, Val{1} )
-
-    # generate STL for nodes
-    genSTLAnods( mesh, lat, fdist, n, fid )
-
-    # close STL
-    @printf( fid, "endsolid %s\n", name )
-    close( fid )
-
-end
-
-"""
     genFacesNods( mesh::MeshF, lat::Lattice, fdist::Matrix{Float64}, n::Int64, fid::IOStream )
 
 Writes the STL facets for all nodes for ASCII files.
@@ -82,9 +56,9 @@ function genFacesNodsCyl( mesh::MeshF, lat::Lattice, n::Int64, fid::IOStream )
 
     nfac = 0
 
-    ptsCylEdge = Vector{Vector{Vector{Vector{Float64}}}}( size(mesh.e,1) )
+    ptsCylEdge = Vector{Vector{Vector{SVector{3,Float64}}}}( size(mesh.e,1) )
     for kk in 1:size(mesh.e,1)
-        ptsCylEdge[kk] = Vector{Vector{Vector{Float64}}}(2)
+        ptsCylEdge[kk] = Vector{Vector{SVector{3,Float64}}}(2)
     end
 
     # generate nodes
@@ -111,7 +85,7 @@ end
 Computes the distance from the end face to the node
 """
 function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
-                      ptsCylEdge::Vector{Vector{Vector{Vector{Float64}}}},
+                      ptsCylEdge::Vector{Vector{Vector{SVector{3,Float64}}}},
                       fid::IOStream )
 
     nfac = 0
@@ -144,11 +118,11 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
     rmax = sqrt( maximum( lat.ar[ mesh.n2e[kk] ] ) / π )
 
     # compute crossing point and normal vector
-    normvec  = Vector{Vector{Vector{Float64}}}( length(edg) )
+    normvec  = Vector{Vector{SVector{3,Float64}}}( length(edg) )
     # tangvec  = Vector{Vector{Vector{Float64}}}( length(edg) )
     lvmax = fill( 0.0, length(edg) )
     for jj in 1:length(edg)
-        normvec[jj]  = Vector{Vector{Float64}}( length(edg0)-1 )
+        normvec[jj]  = Vector{SVector{3,Float64}}( length(edg0)-1 )
         # tangvec[jj]  = Vector{Vector{Float64}}( length(edg)-1 )
     end
     indcnt = fill(1, length(edg) )
@@ -183,8 +157,8 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
         magave  = norm(vec1 + vec2)
 
         # normal vectors
-        normvec[edg_i1][ indcnt[edg_i1] ] = (vec1-vec2) / magdiff
-        normvec[edg_i2][ indcnt[edg_i2] ] = (vec2-vec1) / magdiff
+        normvec[edg_i1][ indcnt[edg_i1] ] = SVector{3}( (vec1-vec2) / magdiff )
+        normvec[edg_i2][ indcnt[edg_i2] ] = SVector{3}( (vec2-vec1) / magdiff )
 
         indcnt[edg_i1] += 1
         indcnt[edg_i2] += 1
@@ -208,7 +182,7 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
         # find intersections between planes and check if they are active
         testpt   = mesh.p[ nod, : ] - mesh.p[ kk, : ] # distance to this point is measured to determine which is closer, distance is relative to current node
         nunique  = uniqueNumPairs( length(edg0)-1 )
-        intersec = Vector{Vector{Float64}}( max( 2*(nunique - (length(edg0)-1)) + 1, 2 ) )
+        intersec = Vector{SVector{3,Float64}}( max( 2*(nunique - (length(edg0)-1)) + 1, 2 ) )
 
         nact = 0
         if nunique == 1 # if nunique is 1, there are no intersections
@@ -228,10 +202,10 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
             lvec  .*=  rmax / nrmperp
 
             nact += 1
-            intersec[nact] =  1.0 * lvec
+            intersec[nact] = SVector{3}( 1.0 * lvec)
 
             nact += 1
-            intersec[nact] = -1.0 * lvec
+            intersec[nact] = SVector{3}(-1.0 * lvec)
 
         else
             for jj in 1:nunique # note: number of planes is length(edg)-1, so can reuse part of upairs
@@ -246,22 +220,22 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
                 nrmperp  = norm( lvec - dot( lvec, evec )*evec )
 
                 # check first point
-                lvec .*=  rmax / nrmperp
+                lvec1 =   lvec * rmax / nrmperp
 
-                act = checkPointAct( lvec, testpt, normvec[ee], evec )
+                act = checkPointAct( lvec1, testpt, normvec[ee], evec )
 
                 if act
                     nact += 1
-                    intersec[nact] = copy(lvec)
+                    intersec[nact] = lvec1
                 end
 
                 # check second point
-                lvec .*= -1.0
+                lvec2 = - lvec * rmax / nrmperp
                 # check ...
-                act = checkPointAct( lvec, testpt, normvec[ee], evec )
+                act = checkPointAct( lvec2, testpt, normvec[ee], evec )
                 if act
                     nact += 1
-                    intersec[nact] = copy(lvec)
+                    intersec[nact] = lvec2
                 end
 
             end
@@ -269,8 +243,8 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
 
         ## order points counterclockwise
         # pick first point as ϕ = 0
-        zerovec   = intersec[1] - dot( intersec[1], evec ) * evec
-        zerovec ./= norm(zerovec)
+        zerovec   = (intersec[1] - dot( intersec[1], evec ) * evec) /
+                    norm( intersec[1] - dot( intersec[1], evec ) * evec )
         ϕ = fill(0.0,nact)
         for jj in 2:nact
             currnvec = intersec[jj] - dot( intersec[jj], evec ) * evec
@@ -303,7 +277,7 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
         perpvec ./= norm(perpvec)
 
         iedge = find( mesh.e[e1,:] .== kk )[]
-        ptsCylEdge[e1][iedge] = Vector{Vector{Float64}}(0)
+        ptsCylEdge[e1][iedge] = Vector{SVector{3,Float64}}(0)
         for jj in 1:nact-1
 
             # figure out on which plane to project
@@ -319,28 +293,24 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
             ϕcurr = linspace( ϕ[jj], ϕ[jj+1], np )
 
             # first part
-            intpts = Vector{Vector{Float64}}( np )
-            cylpts = Vector{Vector{Float64}}( np )
+            intpts = Vector{SVector{3,Float64}}( np )
+            cylpts = Vector{SVector{3,Float64}}( np )
 
             for ii in 1:np
                 currpt = rmax * ( zerovec * cos(ϕcurr[ii]) + perpvec * sin(ϕcurr[ii]) ) # current point in plane perpendicular to evec
                 # find actual point near node
                 d = dot( -currpt, normvec[ee][normind] ) / dot( evec, normvec[ee][normind] ) # scalar value for which line intersects plane
-                intpts[ii] = currpt + d * evec + mesh.p[kk,:]
-                cylpts[ii] = sqrt(lat.ar[e1]/π) * ( zerovec * cos(ϕcurr[ii]) + perpvec * sin(ϕcurr[ii]) ) + mesh.p[kk,:] + evec * lvmax[ee]
+                intpts[ii] = SVector{3}( currpt + d * evec + mesh.p[kk,:] )
+                cylpts[ii] = SVector{3}( sqrt(lat.ar[e1]/π) * ( zerovec * cos(ϕcurr[ii]) + perpvec * sin(ϕcurr[ii]) ) + mesh.p[kk,:] + evec * lvmax[ee] )
 
             end
             # write to file
             for ii in 1:np-1
-                vert = [ cylpts[ii]';
-                         intpts[ii]';
-                         intpts[ii+1]' ]
+                vert = SVector{3,SVector{3,Float64}}( cylpts[ii], intpts[ii], intpts[ii+1] )
                 writeFacetSTLB( vert, fid )
                 nfac += 1
 
-                vert = [ intpts[ii+1]';
-                         cylpts[ii+1]';
-                         cylpts[ii]' ]
+                vert = SVector{3,SVector{3,Float64}}( intpts[ii+1], cylpts[ii+1], cylpts[ii] )
                 writeFacetSTLB( vert, fid )
                 nfac += 1
             end
@@ -363,7 +333,7 @@ end
 Computes the distance from the end face to the node
 """
 function genFacesCyl( cyl::Int64, mesh::MeshF,
-                      ptsCylEdge::Vector{Vector{Vector{Float64}}},
+                      ptsCylEdge::Vector{Vector{SVector{3,Float64}}},
                       fid::IOStream )
 
     nfac = 0
@@ -392,9 +362,7 @@ function genFacesCyl( cyl::Int64, mesh::MeshF,
     ## generate the all facets, starting with the side with the fewest points
     # find first index and generate first facet
     ind0 = findMinDistInd( ptsCylEdge, i1, i2, 1, frac )
-    vert = [ ptsCylEdge[i1][1]';
-             ptsCylEdge[i1][2]';
-             ptsCylEdge[i2][ind0]' ]
+    vert = SVector{3,SVector{3,Float64}}( ptsCylEdge[i1][1], ptsCylEdge[i1][2], ptsCylEdge[i2][ind0] )
     writeFacetSTLB( vert, fid )
     ind00 = ind0 # need to save this index to close loop
     nfac += 1
@@ -403,10 +371,7 @@ function genFacesCyl( cyl::Int64, mesh::MeshF,
 
         ind1 = findMinDistInd( ptsCylEdge, i1, i2, jj, frac )
 
-        vert = [ ptsCylEdge[i1][jj]';
-                 ptsCylEdge[i1][jj+1]';
-                 ptsCylEdge[i2][ind1]' ]
-
+        vert = SVector{3,SVector{3,Float64}}( ptsCylEdge[i1][jj], ptsCylEdge[i1][jj+1], ptsCylEdge[i2][ind1] )
         writeFacetSTLB( vert, fid )
         nfac += 1
 
@@ -414,10 +379,9 @@ function genFacesCyl( cyl::Int64, mesh::MeshF,
         # NOTE: due to ordering ind1 < ind0
         if ind0 > ind1
             for kk = 0:(ind0-ind1-1)
-                vert = [ ptsCylEdge[i2][ ind1+kk ]';
-                         ptsCylEdge[i2][ ind1+kk+1 ]';
-                         ptsCylEdge[i1][ jj ]' ]
-
+                vert = SVector{3,SVector{3,Float64}}( ptsCylEdge[i2][ ind1+kk ],
+                                                      ptsCylEdge[i2][ ind1+kk+1 ],
+                                                      ptsCylEdge[i1][ jj ] )
                 writeFacetSTLB( vert, fid )
                 nfac += 1
             end
@@ -425,10 +389,9 @@ function genFacesCyl( cyl::Int64, mesh::MeshF,
             inds   = vcat(ind1:n2-1, 1:ind0-1)
             indsp1 = vcat(ind1+1:n2-1, 1:ind0)
             for kk in 1:length(inds)
-                vert = [ ptsCylEdge[i2][ inds[kk] ]';
-                         ptsCylEdge[i2][ indsp1[kk] ]';
-                         ptsCylEdge[i1][ jj ]' ]
-
+                vert = SVector{3,SVector{3,Float64}}( ptsCylEdge[i2][ inds[kk] ],
+                                                      ptsCylEdge[i2][ indsp1[kk] ],
+                                                      ptsCylEdge[i1][ jj ] )
                 writeFacetSTLB( vert, fid )
                 nfac += 1
             end
@@ -441,10 +404,9 @@ function genFacesCyl( cyl::Int64, mesh::MeshF,
     ind1 = ind00
     if ind0 > ind1
         for kk = 0:(ind0-ind1-1)
-            vert = [ ptsCylEdge[i2][ ind1+kk ]';
-                     ptsCylEdge[i2][ ind1+kk+1 ]';
-                     ptsCylEdge[i1][ 1 ]' ]
-
+            vert = SVector{3,SVector{3,Float64}}( ptsCylEdge[i2][ ind1+kk ],
+                                                  ptsCylEdge[i2][ ind1+kk+1 ],
+                                                  ptsCylEdge[i1][ 1 ] )
             writeFacetSTLB( vert, fid )
             nfac += 1
         end
@@ -452,10 +414,9 @@ function genFacesCyl( cyl::Int64, mesh::MeshF,
         inds   = vcat(ind1:n2, 1:ind0)
         indsp1 = vcat(ind1+1:n2, 1:ind0+1)
         for kk in 1:length(inds)
-            vert = [ ptsCylEdge[i2][ inds[kk] ]';
-                     ptsCylEdge[i2][ indsp1[kk] ]';
-                     ptsCylEdge[i1][ 1 ]' ]
-
+            vert = SVector{3,SVector{3,Float64}}( ptsCylEdge[i2][ inds[kk] ],
+                                                  ptsCylEdge[i2][ indsp1[kk] ],
+                                                  ptsCylEdge[i1][ 1 ] )
             writeFacetSTLB( vert, fid )
             nfac += 1
         end
@@ -465,8 +426,8 @@ function genFacesCyl( cyl::Int64, mesh::MeshF,
 
 end
 
-function checkPointAct( currpt::Vector{Float64}, testpt::Vector{Float64},
-                        normvec::Vector{Vector{Float64}}, evec::Vector{Float64} )
+function checkPointAct( currpt::SVector{3,Float64}, testpt::Vector{Float64},
+                        normvec::Vector{SVector{3,Float64}}, evec::Vector{Float64} )
 
     dist    =  norm( currpt - testpt )
     distorg = dist
@@ -493,8 +454,8 @@ function checkPointAct( currpt::Vector{Float64}, testpt::Vector{Float64},
 
 end
 
-function findNormPlane( currpt::Vector{Float64}, testpt::Vector{Float64},
-                        normvec::Vector{Vector{Float64}}, evec::Vector{Float64} )
+function findNormPlane( currpt::SVector{3,Float64}, testpt::Vector{Float64},
+                        normvec::Vector{SVector{3,Float64}}, evec::Vector{Float64} )
 
     dist = 3*norm( currpt - testpt )
     ind  = 0
@@ -518,7 +479,7 @@ function findNormPlane( currpt::Vector{Float64}, testpt::Vector{Float64},
 
 end
 
-function findMinDistInd( pts::Vector{Vector{Vector{Float64}}},
+function findMinDistInd( pts::Vector{Vector{SVector{3,Float64}}},
                          ind1::Int64, ind2::Int64,
                          jj::Int64, frac::Float64)
 
@@ -543,4 +504,41 @@ function uniqueNumPairs( n::Int64 )
     # here k = 2, so
     #   (n + 1) nCr (k)
     return binomial( n + 1, 2 )
+end
+
+"""
+    writeFacetSTLB( vert::SVector{3,SVector{3,Float64}}, fid::IOStream )
+
+Writes one STL facet for binary file.
+"""
+function writeFacetSTLB( vert::SVector{3,SVector{3,Float64}}, fid::IOStream )
+
+    vec1   = vert[2] - vert[1]
+    vec2   = vert[3] - vert[1]
+    vec1   = cross( vec1, vec2 )
+    normal = vec1 / norm(vec1)
+
+    # normals
+    write( fid, Float32( normal[1] ) )
+    write( fid, Float32( normal[2] ) )
+    write( fid, Float32( normal[3] ) )
+
+    # Vertex 1
+    write( fid, Float32( vert[1][1] ) )
+    write( fid, Float32( vert[1][2] ) )
+    write( fid, Float32( vert[1][3] ) )
+
+    # Vertex 2
+    write( fid, Float32( vert[2][1] ) )
+    write( fid, Float32( vert[2][2] ) )
+    write( fid, Float32( vert[2][3] ) )
+
+    # Vertex 3
+    write( fid, Float32( vert[3][1] ) )
+    write( fid, Float32( vert[3][2] ) )
+    write( fid, Float32( vert[3][3] ) )
+
+    # End facet
+    write( fid, UInt16(0) )
+
 end
