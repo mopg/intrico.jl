@@ -18,6 +18,11 @@ Generates a binary .stl file for the lattice in `mesh` with the areas defined in
 """
 function genSTLnew( mesh::MeshF,  lat::Lattice, flname::String; n::Int64 = 8 )
 
+    edgWrite = Vector{Vector{Bool}}( size(mesh.e,1) )
+    for jj in 1:size(mesh.e,1)
+        edgWrite[jj] = [true]
+    end
+
     # open STL file
     fid = open( flname, "w" )
 
@@ -28,7 +33,8 @@ function genSTLnew( mesh::MeshF,  lat::Lattice, flname::String; n::Int64 = 8 )
     write(fid,UInt32(0)) # number of faces is unknown now, so write 0
 
     # generate all faces (and write)
-    factot = genFacesNodsCyl( mesh, lat, n, fid )
+    factot = [ 0 ]
+    genFacesNodsCyl( mesh, lat, n, factot, fid, edgWrite )
 
     # close STL
     close( fid )
@@ -42,9 +48,59 @@ function genSTLnew( mesh::MeshF,  lat::Lattice, flname::String; n::Int64 = 8 )
         write(fid,' ')
     end
     # write correct number of faces
-    write(fid,UInt32(factot))
+    write( fid, UInt32( factot[1] ) )
     # close STL
     close( fid )
+end
+
+"""
+    genSTL( mesh::MeshF,  lat::Lattice, flname::String; n = 8, name = "object" )
+
+Generates a binary .stl file for the lattice in `mesh` with the areas defined in `lat`.
+"""
+function genSTLnew( mesh::MeshF,  lat::Lattice, flnames::Vector{String},
+                    edgWrite::Vector{Vector{Bool}}; n::Int64 = 8 )
+
+    # open STL file
+    fid = Vector{IOStream}( length(flnames) )
+    for ii in 1:length(flnames)
+
+        fid[ii] = open( flnames[ii], "w" )
+
+        # write header
+        for jj in 1:80
+            write(fid[ii],' ')
+        end
+        write(fid[ii],UInt32(0)) # number of faces is unknown now, so write 0
+
+    end
+
+    # generate all faces (and write)
+    factot = fill( 0, length(flnames) )
+    genFacesNodsCyl( mesh, lat, n, factot, fid, edgWrite )
+
+    # close STL
+    for ii in 1:length(flnames)
+        close( fid[ii] )
+    end
+
+    ## reopen to write the number of faces
+    for ii in 1:length(flnames)
+
+        fid = open( flnames[ii], "a+" )
+        seekstart(fid) # go back to top of file
+
+        # rewrite header
+        for jj in 1:80
+            write(fid,' ')
+        end
+        # write correct number of faces
+        write( fid,UInt32( factot[ii] ) )
+        # close STL
+        close( fid )
+
+    end
+
 end
 
 """
@@ -52,9 +108,9 @@ end
 
 Writes the STL facets for all nodes for ASCII files.
 """
-function genFacesNodsCyl( mesh::MeshF, lat::Lattice, n::Int64, fid::IOStream )
-
-    nfac = 0
+function genFacesNodsCyl( mesh::MeshF, lat::Lattice, n::Int64, nfac::Vector{Int64},
+                          fid::Union{IOStream,Vector{IOStream}},
+                          edgWrite::Vector{Vector{Bool}} )
 
     ptsCylEdge = Vector{Vector{Vector{SVector{3,Float64}}}}( size(mesh.e,1) )
     for kk in 1:size(mesh.e,1)
@@ -64,18 +120,16 @@ function genFacesNodsCyl( mesh::MeshF, lat::Lattice, n::Int64, fid::IOStream )
     # generate nodes
     for nn in 1:mesh.n
 
-        nfac += genFacesNod( nn, mesh, lat, n, ptsCylEdge, fid )
+        genFacesNod( nn, mesh, lat, n, ptsCylEdge, nfac, fid, edgWrite )
 
     end
 
     # generate cylinders
     for kk in 1:size(mesh.e,1)
         if lat.ar[ kk ] > 0.0 || sqrt( lat.ar[ kk ] / π ) > 1.e-14
-            nfac += genFacesCyl( kk, mesh, ptsCylEdge[kk], fid )
+            genFacesCyl( kk, mesh, ptsCylEdge[kk], nfac, fid, edgWrite[kk] )
         end
     end
-
-    return nfac
 
 end
 
@@ -86,9 +140,9 @@ Computes the distance from the end face to the node
 """
 function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
                       ptsCylEdge::Vector{Vector{Vector{SVector{3,Float64}}}},
-                      fid::IOStream )
-
-    nfac = 0
+                      nfac::Vector{Int64},
+                      fid::Union{IOStream,Vector{IOStream}},
+                      edgWrite::Vector{Vector{Bool}} )
 
     # generate pairs of edges
     edg   = [i for i in 1:length(mesh.n2e[kk])]
@@ -307,12 +361,11 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
             # write to file
             for ii in 1:np-1
                 vert = SVector{3,SVector{3,Float64}}( cylpts[ii], intpts[ii], intpts[ii+1] )
-                writeFacetSTLB( vert, fid )
-                nfac += 1
+                writeFacetSTLB( vert, nfac, fid, edgWrite[e1] )
 
                 vert = SVector{3,SVector{3,Float64}}( intpts[ii+1], cylpts[ii+1], cylpts[ii] )
-                writeFacetSTLB( vert, fid )
-                nfac += 1
+                writeFacetSTLB( vert, nfac, fid, edgWrite[e1] )
+
             end
             append!( ptsCylEdge[e1][iedge], cylpts[1:end-1] )
             if jj == nact-1
@@ -323,8 +376,6 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
 
     end
 
-    return nfac
-
 end
 
 """
@@ -333,10 +384,9 @@ end
 Computes the distance from the end face to the node
 """
 function genFacesCyl( cyl::Int64, mesh::MeshF,
-                      ptsCylEdge::Vector{Vector{SVector{3,Float64}}},
-                      fid::IOStream )
+                      ptsCylEdge::Vector{Vector{SVector{3,Float64}}}, nfac::Vector{Int64},
+                      fid::Union{IOStream,Vector{IOStream}}, edgWrite::Vector{Bool} )
 
-    nfac = 0
     frac = 0.25
 
     e1 = mesh.e[cyl,1]
@@ -363,17 +413,16 @@ function genFacesCyl( cyl::Int64, mesh::MeshF,
     # find first index and generate first facet
     ind0 = findMinDistInd( ptsCylEdge, i1, i2, 1, frac )
     vert = SVector{3,SVector{3,Float64}}( ptsCylEdge[i1][1], ptsCylEdge[i1][2], ptsCylEdge[i2][ind0] )
-    writeFacetSTLB( vert, fid )
+    writeFacetSTLB( vert, nfac, fid, edgWrite )
     ind00 = ind0 # need to save this index to close loop
-    nfac += 1
+
     # generate rest of facets (also for other ring)
     for jj in 2:n1-1
 
         ind1 = findMinDistInd( ptsCylEdge, i1, i2, jj, frac )
 
         vert = SVector{3,SVector{3,Float64}}( ptsCylEdge[i1][jj], ptsCylEdge[i1][jj+1], ptsCylEdge[i2][ind1] )
-        writeFacetSTLB( vert, fid )
-        nfac += 1
+        writeFacetSTLB( vert, nfac, fid, edgWrite )
 
         # generate other faces
         # NOTE: due to ordering ind1 < ind0
@@ -382,8 +431,7 @@ function genFacesCyl( cyl::Int64, mesh::MeshF,
                 vert = SVector{3,SVector{3,Float64}}( ptsCylEdge[i2][ ind1+kk ],
                                                       ptsCylEdge[i2][ ind1+kk+1 ],
                                                       ptsCylEdge[i1][ jj ] )
-                writeFacetSTLB( vert, fid )
-                nfac += 1
+                writeFacetSTLB( vert, nfac, fid, edgWrite )
             end
         elseif ind0 < ind1
             inds   = vcat(ind1:n2-1, 1:ind0-1)
@@ -392,8 +440,7 @@ function genFacesCyl( cyl::Int64, mesh::MeshF,
                 vert = SVector{3,SVector{3,Float64}}( ptsCylEdge[i2][ inds[kk] ],
                                                       ptsCylEdge[i2][ indsp1[kk] ],
                                                       ptsCylEdge[i1][ jj ] )
-                writeFacetSTLB( vert, fid )
-                nfac += 1
+                writeFacetSTLB( vert, nfac, fid, edgWrite )
             end
         end
 
@@ -407,8 +454,7 @@ function genFacesCyl( cyl::Int64, mesh::MeshF,
             vert = SVector{3,SVector{3,Float64}}( ptsCylEdge[i2][ ind1+kk ],
                                                   ptsCylEdge[i2][ ind1+kk+1 ],
                                                   ptsCylEdge[i1][ 1 ] )
-            writeFacetSTLB( vert, fid )
-            nfac += 1
+            writeFacetSTLB( vert, nfac, fid, edgWrite )
         end
     elseif ind0 < ind1
         inds   = vcat(ind1:n2, 1:ind0)
@@ -417,12 +463,9 @@ function genFacesCyl( cyl::Int64, mesh::MeshF,
             vert = SVector{3,SVector{3,Float64}}( ptsCylEdge[i2][ inds[kk] ],
                                                   ptsCylEdge[i2][ indsp1[kk] ],
                                                   ptsCylEdge[i1][ 1 ] )
-            writeFacetSTLB( vert, fid )
-            nfac += 1
+            writeFacetSTLB( vert, nfac, fid, edgWrite )
         end
     end
-
-    return nfac
 
 end
 
@@ -511,7 +554,8 @@ end
 
 Writes one STL facet for binary file.
 """
-function writeFacetSTLB( vert::SVector{3,SVector{3,Float64}}, fid::IOStream )
+function writeFacetSTLB( vert::SVector{3,SVector{3,Float64}}, nfac::Vector{Int64},
+                         fid::IOStream, edgWrite::Vector{Bool} )
 
     vec1   = vert[2] - vert[1]
     vec2   = vert[3] - vert[1]
@@ -540,5 +584,21 @@ function writeFacetSTLB( vert::SVector{3,SVector{3,Float64}}, fid::IOStream )
 
     # End facet
     write( fid, UInt16(0) )
+
+    nfac[1] += 1
+
+end
+
+function writeFacetSTLB( vert::SVector{3,SVector{3,Float64}}, nfac::Vector{Int64},
+                         fid::Vector{IOStream}, edgWrite::Vector{Bool} )
+
+    for jj in 1:length( fid )
+
+        if edgWrite[jj]
+            writeFacetSTLB( vert, [0], fid[jj], edgWrite )
+            nfac[jj] += 1
+        end
+
+    end
 
 end
