@@ -493,7 +493,7 @@ function checkPointAct( currpt::SVector{3,Float64}, testpt::Vector{Float64},
     end
 
     # is point active? Only if new distance is same as original distance
-    if abs(dist - distorg) < 1e-13
+    if abs(dist - distorg)/abs(dist) < 1e-14
         act = true
     end
 
