@@ -315,7 +315,7 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
         corrind[1] = angleind[1]
         nact = 1
         for jj in 1:length(ϕ)-1
-            if (ϕ[jj+1] - ϕ[jj]) > 1e-14
+            if (ϕ[jj+1] - ϕ[jj]) > 1e-14 && (2*π - ϕ[jj+1]) > 1e-14
                 nact += 1
                 corrind[nact] = jj+1
             end
@@ -342,6 +342,11 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
             normcurr = normvec[ee][normind]
 
             Δϕ = ϕ[jj+1] - ϕ[jj]
+            if Δϕ < 1e-14
+                println("ϕ[jj]   ", ϕ[jj])
+                println("ϕ[jj+1] ", ϕ[jj+1])
+                error(" Δϕ = 0")
+            end
             np = max( convert( Int64, ceil( (Δϕ-1e-5)/(2*π) * nn ) + 1 ), 2 ) # ensure we have at least two points
 
             ϕcurr = linspace( ϕ[jj], ϕ[jj+1], np )
@@ -413,7 +418,21 @@ function genFacesCyl( cyl::Int64, mesh::MeshF,
     # find first index and generate first facet
     ind0 = findMinDistInd( ptsCylEdge, i1, i2, 1, frac )
     vert = SVector{3,SVector{3,Float64}}( ptsCylEdge[i1][1], ptsCylEdge[i1][2], ptsCylEdge[i2][ind0] )
+    nfacold = nfac[1]
+    nfac1 = 0
+    nfac2 = 0
     writeFacetSTLB( vert, nfac, fid, edgWrite )
+    vec1   = vert[2] - vert[1]
+    vec2   = vert[3] - vert[1]
+    vec1   = cross( vec1, vec2 )
+    if norm( vec1 ) < 1.e-14
+        println(" cyl ", cyl )
+        println(" vec1 ", vert[2] - vert[1])
+        println(" vec2 ", vec2)
+        println(" norm(vec1) ", norm(vec1) )
+        error("zero Area face")
+    end
+    nfac1+=1
     ind00 = ind0 # need to save this index to close loop
 
     # generate rest of facets (also for other ring)
@@ -423,6 +442,21 @@ function genFacesCyl( cyl::Int64, mesh::MeshF,
 
         vert = SVector{3,SVector{3,Float64}}( ptsCylEdge[i1][jj], ptsCylEdge[i1][jj+1], ptsCylEdge[i2][ind1] )
         writeFacetSTLB( vert, nfac, fid, edgWrite )
+        vec1   = vert[2] - vert[1]
+        vec2   = vert[3] - vert[1]
+        vec1   = cross( vec1, vec2 )
+        if norm( vec1 ) < 1.e-14
+            println(" cyl ", cyl )
+            println(" ind1 ", ind1, " n2 ", n2)
+            println(" jj ", jj, " n1 ", n1 )
+            println(" vert[1] ", vert[1] , " vert[2] ", vert[2])
+            println(" vec1 ", vert[2] - vert[1])
+            println(" vec2 ", vec2)
+            println("ptsCylEdge[i1] ", ptsCylEdge[i1])
+            println(" norm(vec1) ", norm(vec1) )
+            error("zero Area face")
+        end
+        nfac1+=1
 
         # generate other faces
         # NOTE: due to ordering ind1 < ind0
@@ -432,15 +466,37 @@ function genFacesCyl( cyl::Int64, mesh::MeshF,
                                                       ptsCylEdge[i2][ ind1+kk+1 ],
                                                       ptsCylEdge[i1][ jj ] )
                 writeFacetSTLB( vert, nfac, fid, edgWrite )
+                vec1   = vert[2] - vert[1]
+                vec2   = vert[3] - vert[1]
+                vec1   = cross( vec1, vec2 )
+                if norm( vec1 ) < 1.e-14
+                    println(" cyl ", cyl )
+                    println(" vec1 ", vert[2] - vert[1])
+                    println(" vec2 ", vec2)
+                    println(" norm(vec1) ", norm(vec1) )
+                    error("zero Area face")
+                end
+                nfac2+=1
             end
         elseif ind0 < ind1
             inds   = vcat(ind1:n2-1, 1:ind0-1)
-            indsp1 = vcat(ind1+1:n2-1, 1:ind0)
+            indsp1 = vcat(ind1+1:n2, 2:ind0)
             for kk in 1:length(inds)
                 vert = SVector{3,SVector{3,Float64}}( ptsCylEdge[i2][ inds[kk] ],
                                                       ptsCylEdge[i2][ indsp1[kk] ],
                                                       ptsCylEdge[i1][ jj ] )
                 writeFacetSTLB( vert, nfac, fid, edgWrite )
+                vec1   = vert[2] - vert[1]
+                vec2   = vert[3] - vert[1]
+                vec1   = cross( vec1, vec2 )
+                if norm( vec1 ) < 1.e-14
+                    println(" cyl ", cyl )
+                    println(" vec1 ", vert[2] - vert[1])
+                    println(" vec2 ", vec2)
+                    println(" norm(vec1) ", norm(vec1) )
+                    warn("zero Area face")
+                end
+                nfac2+=1
             end
         end
 
@@ -455,16 +511,57 @@ function genFacesCyl( cyl::Int64, mesh::MeshF,
                                                   ptsCylEdge[i2][ ind1+kk+1 ],
                                                   ptsCylEdge[i1][ 1 ] )
             writeFacetSTLB( vert, nfac, fid, edgWrite )
+            vec1   = vert[2] - vert[1]
+            vec2   = vert[3] - vert[1]
+            vec1   = cross( vec1, vec2 )
+            if norm( vec1 ) < 1.e-14
+                println(" cyl ", cyl )
+                println(" vec1 ", vert[2] - vert[1])
+                println(" vec2 ", vec2)
+                println(" norm(vec1) ", norm(vec1) )
+                error("zero Area face")
+            end
+            nfac2+=1
         end
     elseif ind0 < ind1
-        inds   = vcat(ind1:n2, 1:ind0)
-        indsp1 = vcat(ind1+1:n2, 1:ind0+1)
+        inds   = vcat(ind1:n2-1, 1:ind0-1)
+        indsp1 = vcat(ind1+1:n2, 2:ind0)
+        # inds   = vcat(ind1:n2, 1:ind0)
+        # indsp1 = vcat(ind1+1:n2, 1:ind0+1)
+        println( "inds   ", inds)
+        println( "indsp1 ", indsp1)
         for kk in 1:length(inds)
             vert = SVector{3,SVector{3,Float64}}( ptsCylEdge[i2][ inds[kk] ],
                                                   ptsCylEdge[i2][ indsp1[kk] ],
                                                   ptsCylEdge[i1][ 1 ] )
+            vec1   = vert[2] - vert[1]
+            vec2   = vert[3] - vert[1]
+            vec1   = cross( vec1, vec2 )
+            if norm( vec1 ) < 1.e-14
+                println(" cyl ", cyl )
+                println(" vec1 ", vert[2] - vert[1])
+                println(" vec2 ", vec2)
+                println(" norm(vec1) ", norm(vec1) )
+                error("zero Area face")
+            end
             writeFacetSTLB( vert, nfac, fid, edgWrite )
+            nfac2+=1
         end
+    end
+
+
+    # @assert nfac[1] - nfacold == (n1+n2-2)
+    if nfac[1] - nfacold != (n1+n2-2)
+        # println(n1, " ", n2, " ", nfac[1] - nfacold, " ", n1+n2-2, " ", ind0, " ", ind1)
+        # println( ptsCylEdge[1] )
+        # println( ptsCylEdge[2] )
+        println("n1 ", n1, " n2 ", n2)
+        println(" ind0 ", ind0, " ind1 ", ind1)
+        println(" nfaces ", nfac[1] - nfacold, " nfaces (th) ", n1+n2-2 )
+        println(" nfac1 ", nfac1, " nfac2 ", nfac2)
+        println(" cyl ", cyl )
+        error(" not watertight probably")
+        println("")
     end
 
 end
