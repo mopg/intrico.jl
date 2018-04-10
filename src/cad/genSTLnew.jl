@@ -126,7 +126,7 @@ function genFacesNodsCyl( mesh::MeshF, lat::Lattice, n::Int64, nfac::Vector{Int6
 
     # generate cylinders
     for kk in 1:size(mesh.e,1)
-        if lat.ar[ kk ] > 0.0 || sqrt( lat.ar[ kk ] / π ) > 1.e-14
+        if lat.ar[ kk ] > 0.0 && sqrt( lat.ar[ kk ] / π ) > 1.e-14
             genFacesCyl( kk, mesh, ptsCylEdge[kk], nfac, fid, edgWrite[kk] )
         end
     end
@@ -158,7 +158,7 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
     deleteat!(indedges,inddel)
 
     if length(edg0) == 0 # if all nodes are zero thickness, can skip the whole function
-        return 0
+        return nothing
     end
 
     edg1  =   edg0'
@@ -168,7 +168,7 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
 
     pairs = unique(sort(pairs,2), 1) # unique pairs
     pairs = pairs[ sortperm( pairs[:,1] + pairs[:,2]*100 ), : ] # ensure highest indices are last
-    # TODO: don't need to do this for each loop, can just precompute this for n = 10 and then just take part of the unique pairs
+    # TODO: don't need to do this for each loop, can just precompute this for n = 40 and then just take part of the unique pairs
     rmax = sqrt( maximum( lat.ar[ mesh.n2e[kk] ] ) / π )
 
     # compute crossing point and normal vector
@@ -219,7 +219,8 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
 
     end
 
-    # add offset to rods
+    # add offset to rods # TODO: this needs to be better such that things do not collide.
+    # TODO need to do a check here for collisions
     for ii in 1:length(lvmax)
         lvmax[ii] += 0.05 * norm( mesh.p[ mesh.e[mesh.n2e[kk][edg[ii]],1],: ] - mesh.p[ mesh.e[mesh.n2e[kk][edg[ii]],2],: ] )
     end
@@ -342,11 +343,7 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
             normcurr = normvec[ee][normind]
 
             Δϕ = ϕ[jj+1] - ϕ[jj]
-            if Δϕ < 1e-14
-                println("ϕ[jj]   ", ϕ[jj])
-                println("ϕ[jj+1] ", ϕ[jj+1])
-                error(" Δϕ = 0")
-            end
+            @assert Δϕ > 1e-14
             np = max( convert( Int64, ceil( (Δϕ-1e-5)/(2*π) * nn ) + 1 ), 2 ) # ensure we have at least two points
 
             ϕcurr = linspace( ϕ[jj], ϕ[jj+1], np )
@@ -418,21 +415,9 @@ function genFacesCyl( cyl::Int64, mesh::MeshF,
     # find first index and generate first facet
     ind0 = findMinDistInd( ptsCylEdge, i1, i2, 1, frac )
     vert = SVector{3,SVector{3,Float64}}( ptsCylEdge[i1][1], ptsCylEdge[i1][2], ptsCylEdge[i2][ind0] )
-    nfacold = nfac[1]
-    nfac1 = 0
-    nfac2 = 0
+
     writeFacetSTLB( vert, nfac, fid, edgWrite )
-    vec1   = vert[2] - vert[1]
-    vec2   = vert[3] - vert[1]
-    vec1   = cross( vec1, vec2 )
-    if norm( vec1 ) < 1.e-14
-        println(" cyl ", cyl )
-        println(" vec1 ", vert[2] - vert[1])
-        println(" vec2 ", vec2)
-        println(" norm(vec1) ", norm(vec1) )
-        error("zero Area face")
-    end
-    nfac1+=1
+
     ind00 = ind0 # need to save this index to close loop
 
     # generate rest of facets (also for other ring)
@@ -442,21 +427,6 @@ function genFacesCyl( cyl::Int64, mesh::MeshF,
 
         vert = SVector{3,SVector{3,Float64}}( ptsCylEdge[i1][jj], ptsCylEdge[i1][jj+1], ptsCylEdge[i2][ind1] )
         writeFacetSTLB( vert, nfac, fid, edgWrite )
-        vec1   = vert[2] - vert[1]
-        vec2   = vert[3] - vert[1]
-        vec1   = cross( vec1, vec2 )
-        if norm( vec1 ) < 1.e-14
-            println(" cyl ", cyl )
-            println(" ind1 ", ind1, " n2 ", n2)
-            println(" jj ", jj, " n1 ", n1 )
-            println(" vert[1] ", vert[1] , " vert[2] ", vert[2])
-            println(" vec1 ", vert[2] - vert[1])
-            println(" vec2 ", vec2)
-            println("ptsCylEdge[i1] ", ptsCylEdge[i1])
-            println(" norm(vec1) ", norm(vec1) )
-            error("zero Area face")
-        end
-        nfac1+=1
 
         # generate other faces
         # NOTE: due to ordering ind1 < ind0
@@ -466,17 +436,6 @@ function genFacesCyl( cyl::Int64, mesh::MeshF,
                                                       ptsCylEdge[i2][ ind1+kk+1 ],
                                                       ptsCylEdge[i1][ jj ] )
                 writeFacetSTLB( vert, nfac, fid, edgWrite )
-                vec1   = vert[2] - vert[1]
-                vec2   = vert[3] - vert[1]
-                vec1   = cross( vec1, vec2 )
-                if norm( vec1 ) < 1.e-14
-                    println(" cyl ", cyl )
-                    println(" vec1 ", vert[2] - vert[1])
-                    println(" vec2 ", vec2)
-                    println(" norm(vec1) ", norm(vec1) )
-                    error("zero Area face")
-                end
-                nfac2+=1
             end
         elseif ind0 < ind1
             inds   = vcat(ind1:n2-1, 1:ind0-1)
@@ -486,17 +445,6 @@ function genFacesCyl( cyl::Int64, mesh::MeshF,
                                                       ptsCylEdge[i2][ indsp1[kk] ],
                                                       ptsCylEdge[i1][ jj ] )
                 writeFacetSTLB( vert, nfac, fid, edgWrite )
-                vec1   = vert[2] - vert[1]
-                vec2   = vert[3] - vert[1]
-                vec1   = cross( vec1, vec2 )
-                if norm( vec1 ) < 1.e-14
-                    println(" cyl ", cyl )
-                    println(" vec1 ", vert[2] - vert[1])
-                    println(" vec2 ", vec2)
-                    println(" norm(vec1) ", norm(vec1) )
-                    warn("zero Area face")
-                end
-                nfac2+=1
             end
         end
 
@@ -511,57 +459,16 @@ function genFacesCyl( cyl::Int64, mesh::MeshF,
                                                   ptsCylEdge[i2][ ind1+kk+1 ],
                                                   ptsCylEdge[i1][ 1 ] )
             writeFacetSTLB( vert, nfac, fid, edgWrite )
-            vec1   = vert[2] - vert[1]
-            vec2   = vert[3] - vert[1]
-            vec1   = cross( vec1, vec2 )
-            if norm( vec1 ) < 1.e-14
-                println(" cyl ", cyl )
-                println(" vec1 ", vert[2] - vert[1])
-                println(" vec2 ", vec2)
-                println(" norm(vec1) ", norm(vec1) )
-                error("zero Area face")
-            end
-            nfac2+=1
         end
     elseif ind0 < ind1
         inds   = vcat(ind1:n2-1, 1:ind0-1)
         indsp1 = vcat(ind1+1:n2, 2:ind0)
-        # inds   = vcat(ind1:n2, 1:ind0)
-        # indsp1 = vcat(ind1+1:n2, 1:ind0+1)
-        println( "inds   ", inds)
-        println( "indsp1 ", indsp1)
         for kk in 1:length(inds)
             vert = SVector{3,SVector{3,Float64}}( ptsCylEdge[i2][ inds[kk] ],
                                                   ptsCylEdge[i2][ indsp1[kk] ],
                                                   ptsCylEdge[i1][ 1 ] )
-            vec1   = vert[2] - vert[1]
-            vec2   = vert[3] - vert[1]
-            vec1   = cross( vec1, vec2 )
-            if norm( vec1 ) < 1.e-14
-                println(" cyl ", cyl )
-                println(" vec1 ", vert[2] - vert[1])
-                println(" vec2 ", vec2)
-                println(" norm(vec1) ", norm(vec1) )
-                error("zero Area face")
-            end
             writeFacetSTLB( vert, nfac, fid, edgWrite )
-            nfac2+=1
         end
-    end
-
-
-    # @assert nfac[1] - nfacold == (n1+n2-2)
-    if nfac[1] - nfacold != (n1+n2-2)
-        # println(n1, " ", n2, " ", nfac[1] - nfacold, " ", n1+n2-2, " ", ind0, " ", ind1)
-        # println( ptsCylEdge[1] )
-        # println( ptsCylEdge[2] )
-        println("n1 ", n1, " n2 ", n2)
-        println(" ind0 ", ind0, " ind1 ", ind1)
-        println(" nfaces ", nfac[1] - nfacold, " nfaces (th) ", n1+n2-2 )
-        println(" nfac1 ", nfac1, " nfac2 ", nfac2)
-        println(" cyl ", cyl )
-        error(" not watertight probably")
-        println("")
     end
 
 end
@@ -586,7 +493,7 @@ function checkPointAct( currpt::SVector{3,Float64}, testpt::Vector{Float64},
     end
 
     # is point active? Only if new distance is same as original distance
-    if abs(dist - distorg) < 1e-14
+    if abs(dist - distorg) < 1e-13
         act = true
     end
 
