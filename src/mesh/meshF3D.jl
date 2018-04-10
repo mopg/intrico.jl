@@ -29,7 +29,10 @@ struct MeshF3D <: MeshF
   t2f::Matrix{Int64}      # Triangle - face connectivity
   f::Matrix{Int64}        # face - node/triangle connectivity
   fb::Matrix{Int64}       # Boundary face info
+
   e::Matrix{Int64}        # Edge connectivity
+  e2f::Vector{Vector{Int64}} # Edge to face connectivity
+  f2e::Matrix{Int64} # Face to edge connectivity
   nodes::Array{Float64,3} # Nodes on which solution is evaluated -- needed to
                           #  compute Jacobian on face
 
@@ -46,11 +49,11 @@ Constructor that generates frame from `mesh`.
 """
 function MeshF( mesh::luteos.Mesh3D )
 
-  e = genEdgesF3D( mesh.f )
+  e, e2f, f2e  = genEdgesF3D( mesh.f )
 
   n2e = genNEconnec3D( e, mesh.n )
 
-  MeshF3D( 3, mesh.n, mesh.p, mesh.t, mesh.t2f, mesh.f, mesh.fb, e,
+  MeshF3D( 3, mesh.n, mesh.p, mesh.t, mesh.t2f, mesh.f, mesh.fb, e, e2f, f2e,
            mesh.nodes, n2e, mesh.boundtags )
 
 end
@@ -91,7 +94,10 @@ Generates edge connectivity given face connectivity (`f`).
 """
 function genEdgesF3D( f::Matrix{Int64} )
 
-  edges  = vcat( f[:,[1,2]], f[:,[2,3]], f[:,[3,1]] ) # This holds all edges (but multiple copies)
+  nf = size(f,1)
+
+  edges = vcat( f[:,[1,2]], f[:,[2,3]], f[:,[3,1]] ) # This holds all edges (but multiple copies)
+  faces  = vcat( 1:nf, 1:nf, 1:nf )
 
   boundsf =  f[:,5]
   boundsf[ boundsf .> 0 ] = 0
@@ -154,7 +160,26 @@ function genEdgesF3D( f::Matrix{Int64} )
   # add boundary information
   e[:,3:4]   = boundsUni[indUni,:]
 
-  return e
+  # make e2f, f2e
+  e2f = Vector{Vector{Int64}}( ne )
+  for jj in 1:ne
+      e2f[jj] = fill( 0, 0 )
+  end
+  f2e = Matrix{Int64}( nf, 3 )
+  for jj = 1:3*nf
+
+    ind  = faces[jj]
+    indf = Int64(ceil(jj / nf))
+
+    inde = ix[jj] - jx[jj]
+
+    append!( e2f[inde], ind )
+
+    f2e[ ind, indf ] = inde
+
+  end
+
+  return e, e2f, f2e
 
 end
 
