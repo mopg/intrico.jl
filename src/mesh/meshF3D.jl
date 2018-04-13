@@ -79,11 +79,11 @@ function MeshF3D( name::String )
 
   n_ = size( p_, 1 )
 
-  e_ = genEdgesF3D( mesh.f )
+  e_, e2f_, f2e_ = genEdgesF3D( mesh.f )
 
   n2e = genNEconnec3D( e_, n_ )
 
-  MeshF3D( 3, n_, p_, t_, t2f_, f_, fb_, e_, nodes_, n2e, tags_ )
+  MeshF3D( 3, n_, p_, t_, t2f_, f_, fb_, e_, e2f_, f2e_, nodes_, n2e, tags_ )
 
 end
 
