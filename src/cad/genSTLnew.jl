@@ -112,17 +112,27 @@ function genFacesNodsCyl( mesh::MeshF, lat::Lattice, n::Int64, nfac::Vector{Int6
                           fid::Union{IOStream,Vector{IOStream}},
                           edgWrite::Vector{Vector{Bool}} )
 
+    # setup points to cylinder connectivity
     ptsCylEdge = Vector{Vector{Vector{SVector{3,Float64}}}}( size(mesh.e,1) )
     for kk in 1:size(mesh.e,1)
         ptsCylEdge[kk] = Vector{Vector{SVector{3,Float64}}}(2)
     end
 
+    # setup distance vector
+    fdist = Vector{Vector{Float64}}( size(mesh.e,1) )
+    for jj in 1:size(mesh.e,1)
+        fdist[jj] = fill( 0.0, 2 )
+    end
+
     # generate nodes
     for nn in 1:mesh.n
 
-        genFacesNod( nn, mesh, lat, n, ptsCylEdge, nfac, fid, edgWrite )
+        genFacesNod( nn, mesh, lat, n, ptsCylEdge, nfac, fid, edgWrite, fdist )
 
     end
+
+    # Collision warnings
+    collisionWarning( mesh, fdist )
 
     # generate cylinders
     for kk in 1:size(mesh.e,1)
@@ -142,7 +152,7 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
                       ptsCylEdge::Vector{Vector{Vector{SVector{3,Float64}}}},
                       nfac::Vector{Int64},
                       fid::Union{IOStream,Vector{IOStream}},
-                      edgWrite::Vector{Vector{Bool}} )
+                      edgWrite::Vector{Vector{Bool}}, fdist::Vector{Vector{Float64}} )
 
     # generate pairs of edges
     edg   = [i for i in 1:length(mesh.n2e[kk])]
@@ -219,10 +229,16 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
 
     end
 
-    # add offset to rods # TODO: this needs to be better such that things do not collide.
-    # TODO need to do a check here for collisions
+    # add offset to rods
     for ii in 1:length(lvmax)
-        lvmax[ii] += 0.05 * norm( mesh.p[ mesh.e[mesh.n2e[kk][edg[ii]],1],: ] - mesh.p[ mesh.e[mesh.n2e[kk][edg[ii]],2],: ] )
+        lengthedge = norm( mesh.p[ mesh.e[mesh.n2e[kk][edg[ii]],1],: ] - mesh.p[ mesh.e[mesh.n2e[kk][edg[ii]],2],: ] )
+        if lvmax[ii] < 0.15 * lengthedge
+            lvmax[ii] += 0.05 * lengthedge
+        end
+
+        # add to global distance vector
+        ie = find( mesh.e[ mesh.n2e[kk][ edg[ii] ], 1:2] .!= kk )[]
+        fdist[ mesh.n2e[kk][ edg[ii] ] ][ ie ] = lvmax[ii]
     end
 
     # loop over each edge
@@ -641,5 +657,28 @@ function writeFacetSTLB( vert::SVector{3,SVector{3,Float64}}, fid::IOStream )
 
     # End facet
     write( fid, UInt16(0) )
+
+end
+
+function collisionWarning( mesh::MeshF, fdist::Vector{Vector{Float64}} )
+
+    nw = 0
+    for jj in 1:length(fdist)
+
+        if fdist[jj][1] > 0.0
+            ledge = norm( mesh.p[ mesh.e[jj,2], : ] - mesh.p[ mesh.e[jj,1], : ] )
+
+            if ledge < sum( fdist[jj] )
+                warn( "Collision detected at edge ", jj )
+                nw += 1
+            end
+        end
+
+    end
+
+    if nw > 0
+        println( "" )
+        warn( "Generated ", nw, " collisions" )
+    end
 
 end
