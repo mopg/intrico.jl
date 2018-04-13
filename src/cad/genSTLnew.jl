@@ -232,8 +232,8 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
     # add offset to rods
     for ii in 1:length(lvmax)
         lengthedge = norm( mesh.p[ mesh.e[mesh.n2e[kk][edg[ii]],1],: ] - mesh.p[ mesh.e[mesh.n2e[kk][edg[ii]],2],: ] )
-        if lvmax[ii] < 0.15 * lengthedge
-            lvmax[ii] += 0.05 * lengthedge
+        if lvmax[ii] < 0.30 * lengthedge # 0.15
+            lvmax[ii] += 0.10 * lengthedge # 0.05
         end
 
         # add to global distance vector
@@ -261,22 +261,20 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
             indother    = find( indedges .!= ee )[]
             eother      = mesh.n2e[kk][ edg[ indedges[ indother ] ] ]
             nodother    = mesh.e[eother, find( mesh.e[eother,:] .!= kk )[] ]
-            evecother   = mesh.p[ nodother, : ] - mesh.p[ kk, : ]
-            evecother ./= norm( evecother )
+            evecother   = SVector{3}( (mesh.p[ nodother, : ] - mesh.p[ kk, : ]) / norm(mesh.p[ nodother, : ] - mesh.p[ kk, : ]) )
 
             lvec = evec + evecother
             if norm(lvec) < 1e-14
                 lvec = normvec[ee][1]
             end
 
-            nrmperp = norm( lvec - dot( lvec, evec )*evec )
-            lvec  .*=  rmax / nrmperp
+            lvec2 = lvec * rmax / norm( lvec - dot( lvec, evec )*evec )
 
             nact += 1
-            intersec[nact] = SVector{3}( 1.0 * lvec)
+            intersec[nact] = SVector{3}( 1.0 * lvec2)
 
             nact += 1
-            intersec[nact] = SVector{3}(-1.0 * lvec)
+            intersec[nact] = SVector{3}(-1.0 * lvec2)
 
         else
             for jj in 1:nunique # note: number of planes is length(edg)-1, so can reuse part of upairs
