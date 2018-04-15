@@ -16,7 +16,7 @@
 
 Generates a binary .stl file for the lattice in `mesh` with the areas defined in `lat`.
 """
-function genSTLnew( mesh::MeshF,  lat::Lattice, flname::String; n::Int64 = 8 )
+function genSTLnew( mesh::MeshF,  lat::Lattice, flname::String; n::Int64 = 8, boundflat = Vector{Int64}( 0 ) )
 
     edgWrite = Vector{Vector{Bool}}( size(mesh.e,1) )
     for jj in 1:size(mesh.e,1)
@@ -34,7 +34,7 @@ function genSTLnew( mesh::MeshF,  lat::Lattice, flname::String; n::Int64 = 8 )
 
     # generate all faces (and write)
     factot = [ 0 ]
-    genFacesNodsCyl( mesh, lat, n, factot, fid, edgWrite )
+    genFacesNodsCyl( mesh, lat, n, factot, fid, edgWrite, boundflat )
 
     # close STL
     close( fid )
@@ -77,7 +77,7 @@ function genSTLnew( mesh::MeshF,  lat::Lattice, flnames::Vector{String},
 
     # generate all faces (and write)
     factot = fill( 0, length(flnames) )
-    genFacesNodsCyl( mesh, lat, n, factot, fid, edgWrite )
+    genFacesNodsCyl( mesh, lat, n, factot, fid, edgWrite, boundflat )
 
     # close STL
     for ii in 1:length(flnames)
@@ -110,7 +110,7 @@ Writes the STL facets for all nodes for ASCII files.
 """
 function genFacesNodsCyl( mesh::MeshF, lat::Lattice, n::Int64, nfac::Vector{Int64},
                           fid::Union{IOStream,Vector{IOStream}},
-                          edgWrite::Vector{Vector{Bool}} )
+                          edgWrite::Vector{Vector{Bool}}, boundflat::Vector{Int64} )
 
     # setup points to cylinder connectivity
     ptsCylEdge = Vector{Vector{Vector{SVector{3,Float64}}}}( size(mesh.e,1) )
@@ -124,10 +124,19 @@ function genFacesNodsCyl( mesh::MeshF, lat::Lattice, n::Int64, nfac::Vector{Int6
         fdist[jj] = fill( 0.0, 2 )
     end
 
+    # get flat vector, if exists
+    nvecflat = Vector{SVector{3,Float64}}( length(boundflat) )
+    for jj in 1:length(boundflat)
+        indf = find(mesh.f[:,5] .== -boundflat[jj])[1]
+        vec1 = SVector{3,Float64}( mesh.p[ mesh.f[indf,2],: ] - mesh.p[ mesh.f[indf,1],: ] )
+        vec2 = SVector{3,Float64}( mesh.p[ mesh.f[indf,3],: ] - mesh.p[ mesh.f[indf,1],: ] )
+        nvecflat[jj] = cross(vec1,vec2) / norm( cross(vec1,vec2) )
+    end
+
     # generate nodes
     for nn in 1:mesh.n
 
-        genFacesNod( nn, mesh, lat, n, ptsCylEdge, nfac, fid, edgWrite, fdist )
+        genFacesNod( nn, mesh, lat, n, ptsCylEdge, nfac, fid, edgWrite, fdist, boundflat, nvecflat )
 
     end
 
@@ -152,7 +161,12 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
                       ptsCylEdge::Vector{Vector{Vector{SVector{3,Float64}}}},
                       nfac::Vector{Int64},
                       fid::Union{IOStream,Vector{IOStream}},
-                      edgWrite::Vector{Vector{Bool}}, fdist::Vector{Vector{Float64}} )
+                      edgWrite::Vector{Vector{Bool}},
+                      fdist::Vector{Vector{Float64}},
+                      boundflat::Vector{Int64}, nvecflat::Vector{SVector{3,Float64}} )
+
+    # current coordinate
+    pcurr = SVector{3}( mesh.p[kk,:] )
 
     # generate pairs of edges
     edg   = [i for i in 1:length(mesh.n2e[kk])]
@@ -241,6 +255,20 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
         fdist[ mesh.n2e[kk][ edg[ii] ] ][ ie ] = lvmax[ii]
     end
 
+    # check if on boundary that has to be flat
+    notflat = true
+    nflat = 0
+    for eecnt in 1:length(edg0)
+        ee = indedges[ eecnt ]
+        e1 = mesh.n2e[kk][ edg[ ee ] ]
+        if any(mesh.e[ e1, 3 ] .== boundflat) || any(mesh.e[ e1, 4 ] .== boundflat)
+            # TEMP for now assume we only case about one flat surface
+            # append!( normvec[ee], nvecflat[1:1] )
+            notflat = false
+            nflat   = 2
+        end
+    end
+
     # loop over each edge
     for eecnt in 1:length(edg0)
         ee = indedges[ eecnt ]
@@ -250,10 +278,12 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
         evec   = mesh.p[ nod, : ] - mesh.p[ kk, : ]
         evec ./= norm(evec)
 
+        nnormals = length(normvec[ee]) # or should this be eecnt?
+
         # find intersections between planes and check if they are active
         testpt   = mesh.p[ nod, : ] - mesh.p[ kk, : ] # distance to this point is measured to determine which is closer, distance is relative to current node
-        nunique  = uniqueNumPairs( length(edg0)-1 )
-        intersec = Vector{SVector{3,Float64}}( max( 2*(nunique - (length(edg0)-1)) + 1, 2 ) )
+        nunique  = uniqueNumPairs( nnormals )
+        intersec = Vector{SVector{3,Float64}}( max( 2*(nunique - nnormals) + 1 + nflat, 2 ) )
 
         nact = 0
         if nunique == 1 # if nunique is 1, there are no intersections
@@ -279,6 +309,10 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
         else
             for jj in 1:nunique # note: number of planes is length(edg)-1, so can reuse part of upairs
 
+                # TODO: need to check here for alignment with normal plane, because now that is possible
+                # it is needed, because point won't return active (or divide by zero), actually it probably will?
+                # no doesn't work, becuase will never be active
+
                 if pairs[jj,1] == pairs[jj,2]
                     continue
                 end
@@ -288,12 +322,20 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
                 lvec     = cross( normvec[ee][ ip1 ], normvec[ee][ ip2 ] ) # always going through the node center (because both planes go through that point)
                 nrmperp  = norm( lvec - dot( lvec, evec )*evec )
 
+                # if norm( cross( normvec[ee][ ip2 ], evec ) ) < 1e-14 # problematic edge is added last, so will always be in the second column (ip2)
+                #     # normal plane splits edge down the middle, need to take extra care
+                #     lvec1 = lvec * rmax / nrmperp
+                #
+                #     lvec2 = - lvec * rmax / nrmperp
+                #
+                # else
+
                 # check first point
-                lvec1 =   lvec * rmax / nrmperp
+                lvec1 = lvec * rmax / nrmperp
 
                 act = checkPointAct( lvec1, testpt, normvec[ee], evec )
 
-                if act
+                if act && ( notflat || dot( lvec1, nvecflat[1] ) <= 1e-14 )
                     nact += 1
                     intersec[nact] = lvec1
                 end
@@ -302,18 +344,52 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
                 lvec2 = - lvec * rmax / nrmperp
                 # check ...
                 act = checkPointAct( lvec2, testpt, normvec[ee], evec )
-                if act
+                if act && ( notflat || dot( lvec2, nvecflat[1] ) <= 1e-14 ) # last statement only evaluated if flat
                     nact += 1
                     intersec[nact] = lvec2
                 end
 
+                # end
+
             end
+        end
+
+        ## check for flatspots
+        flatact  = fill( false, nact )
+        if !notflat
+            for jj in 1:length(normvec[ee])
+                lvec     = cross( normvec[ee][ jj ], nvecflat[1] ) # always going through the node center (because both planes go through that point)
+                nrmperp  = norm( lvec - dot( lvec, evec )*evec )
+
+                # check first point
+                lvec1 = lvec * rmax / nrmperp
+
+                act = checkPointAct( lvec1, testpt, normvec[ee], evec )
+
+                if act
+                    nact += 1
+                    intersec[nact] = lvec1
+                    append!(flatact, true)
+                end
+
+                # check second point
+                lvec2 = - lvec * rmax / nrmperp
+                # check ...
+                act = checkPointAct( lvec2, testpt, normvec[ee], evec )
+                if act # last statement only evaluated if flat
+                    nact += 1
+                    intersec[nact] = lvec2
+                    append!(flatact, true)
+                end
+
+            end
+
         end
 
         ## order points counterclockwise
         # pick first point as ϕ = 0
-        zerovec   = (intersec[1] - dot( intersec[1], evec ) * evec) /
-                    norm( intersec[1] - dot( intersec[1], evec ) * evec )
+        zerovec = (intersec[1] - dot( intersec[1], evec ) * evec) /
+                   norm( intersec[1] - dot( intersec[1], evec ) * evec )
         ϕ = fill(0.0,nact)
         for jj in 2:nact
             currnvec = intersec[jj] - dot( intersec[jj], evec ) * evec
@@ -324,22 +400,30 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
         end
 
         # sort based on ϕ
-        angleind   = sortperm( ϕ )
-        ϕ[1:nact]  = ϕ[angleind]
-        corrind    = fill( 0, nact )
-        corrind[1] = angleind[1]
+        angleind         = sortperm( ϕ )
+        ϕ[1:nact]        = ϕ[angleind]
+        intersec[1:nact] = intersec[angleind]
+        flatact          = flatact[angleind]
+        corrind          = fill( 0, nact )
+        corrind[1]       = angleind[1]
         nact = 1
         for jj in 1:length(ϕ)-1
             if (ϕ[jj+1] - ϕ[jj]) > 1e-14 && (2*π - ϕ[jj+1]) > 1e-14
                 nact += 1
                 corrind[nact] = jj+1
+            else
+                flatact[jj] = flatact[jj] || flatact[jj+1]
             end
         end
-        ϕ = ϕ[ corrind[1:nact] ]
+
+        ϕ       = ϕ[ corrind[1:nact] ]
+        flatact = flatact[ corrind[1:nact] ]
+        intersec[1:nact] = intersec[ corrind[1:nact] ]
 
         # add last point to array to close the loop
         append!( ϕ, 2*π )
-        nact += 1
+        append!( flatact, flatact[1] )
+        intersec[nact+1] = intersec[1]
 
         ## Generate points along cuts
         perpvec = cross(evec,zerovec)
@@ -347,7 +431,9 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
 
         iedge = find( mesh.e[e1,:] .== kk )[]
         ptsCylEdge[e1][iedge] = Vector{SVector{3,Float64}}(0)
-        for jj in 1:nact-1
+        for jj in 1:nact
+
+            # TODO need to check here if flatact is true, if true need to stitch
 
             # figure out on which plane to project
             ϕhalf   = ( ϕ[jj] + ϕ[jj+1] ) / 2.
@@ -356,9 +442,24 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
 
             normcurr = normvec[ee][normind]
 
+            projectCircle = true
+            if flatact[jj] && flatact[jj+1]
+                for qq in 1:nnormals
+                    if abs( dot( nvecflat[1], normvec[ee][qq] ) ) < 1e-14
+                        projectCircle = false
+                        break
+                    end
+                end
+                normcurr = - nvecflat[1]
+            end
+
             Δϕ = ϕ[jj+1] - ϕ[jj]
             @assert Δϕ > 1e-14
             np = max( convert( Int64, ceil( (Δϕ-1e-5)/(2*π) * nn ) + 1 ), 2 ) # ensure we have at least two points
+
+            if !projectCircle
+                np = 2
+            end
 
             ϕcurr = linspace( ϕ[jj], ϕ[jj+1], np )
 
@@ -366,13 +467,20 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
             intpts = Vector{SVector{3,Float64}}( np )
             cylpts = Vector{SVector{3,Float64}}( np )
 
-            for ii in 1:np
-                currpt = rmax * ( zerovec * cos(ϕcurr[ii]) + perpvec * sin(ϕcurr[ii]) ) # current point in plane perpendicular to evec
-                # find actual point near node
-                d = dot( -currpt, normvec[ee][normind] ) / dot( evec, normvec[ee][normind] ) # scalar value for which line intersects plane
-                intpts[ii] = SVector{3}( currpt + d * evec + mesh.p[kk,:] )
-                cylpts[ii] = SVector{3}( sqrt(lat.ar[e1]/π) * ( zerovec * cos(ϕcurr[ii]) + perpvec * sin(ϕcurr[ii]) ) + mesh.p[kk,:] + evec * lvmax[ee] )
+            if projectCircle
+                for ii in 1:np
+                    currpt = rmax * ( zerovec * cos(ϕcurr[ii]) + perpvec * sin(ϕcurr[ii]) ) # current point in plane perpendicular to evec
+                    # find actual point near node
+                    d = dot( -currpt, normcurr ) / dot( evec, normcurr ) # scalar value for which line intersects plane
+                    intpts[ii] = SVector{3}( currpt + d * evec + pcurr )
+                    cylpts[ii] = SVector{3}( sqrt(lat.ar[e1]/π) * ( zerovec * cos(ϕcurr[ii]) + perpvec * sin(ϕcurr[ii]) ) + pcurr + evec * lvmax[ee] )
 
+                end
+            else
+                intpts[1] = intersec[jj]   + pcurr
+                intpts[2] = intersec[jj+1] + pcurr
+                cylpts[1] = SVector{3}( sqrt(lat.ar[e1]/π) * ( zerovec * cos(ϕcurr[1]) + perpvec * sin(ϕcurr[1]) ) + pcurr + evec * lvmax[ee] )
+                cylpts[2] = SVector{3}( sqrt(lat.ar[e1]/π) * ( zerovec * cos(ϕcurr[2]) + perpvec * sin(ϕcurr[2]) ) + pcurr + evec * lvmax[ee] )
             end
             # write to file
             for ii in 1:np-1
@@ -383,8 +491,19 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
                 writeFacetSTLB( vert, nfac, fid, edgWrite[e1] )
 
             end
+
+            # if flatact is true, stitch the node
+            if flatact[jj] && flatact[jj+1]
+                # write to file
+                for ii in 1:np-1
+                    vert = SVector{3,SVector{3,Float64}}( intpts[ii+1], intpts[ii], pcurr )
+                    writeFacetSTLB( vert, nfac, fid, edgWrite[e1] )
+                end
+            end
+
+            # save cylinder points for cylinder connections
             append!( ptsCylEdge[e1][iedge], cylpts[1:end-1] )
-            if jj == nact-1
+            if jj == nact
                 append!( ptsCylEdge[e1][iedge], cylpts[end:end] )
             end
 
