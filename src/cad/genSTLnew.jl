@@ -283,7 +283,7 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
         # find intersections between planes and check if they are active
         testpt   = mesh.p[ nod, : ] - mesh.p[ kk, : ] # distance to this point is measured to determine which is closer, distance is relative to current node
         nunique  = uniqueNumPairs( nnormals )
-        intersec = Vector{SVector{3,Float64}}( max( 2*(nunique - nnormals) + 1 + nflat, 2 ) )
+        intersec = Vector{SVector{3,Float64}}( max( 2*(nunique - nnormals) + 1 + nflat, 3 ) )
 
         nact = 0
         if nunique == 1 # if nunique is 1, there are no intersections
