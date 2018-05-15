@@ -59,7 +59,7 @@ end
 Generates a binary .stl file for the lattice in `mesh` with the areas defined in `lat`.
 """
 function genSTLnew( mesh::MeshF,  lat::Lattice, flnames::Vector{String},
-                    edgWrite::Vector{Vector{Bool}}; n::Int64 = 8 )
+                    edgWrite::Vector{Vector{Bool}}; n::Int64 = 8, boundflat = Vector{Int64}( 0 ) )
 
     # open STL file
     fid = Vector{IOStream}( length(flnames) )
