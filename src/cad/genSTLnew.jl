@@ -285,6 +285,14 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
         nunique  = uniqueNumPairs( nnormals )
         intersec = Vector{SVector{3,Float64}}( max( 2*(nunique - nnormals) + 1 + nflat, 3 ) )
 
+        if  e1 == 174#92#294 #any(mesh.e[ e1, 3 ] .== boundflat) || any(mesh.e[ e1, 4 ] .== boundflat)
+            println("ee ", e1)
+            println("kk ", kk)
+            println("mesh.e[ee,:] ", mesh.e[e1,:] )
+            println("notflat ", notflat )
+            println(" ")
+        end
+
         nact = 0
         if nunique == 1 # if nunique is 1, there are no intersections
 
@@ -399,6 +407,11 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
             end
         end
 
+        if  e1 == 174#92#294
+            println("ϕ (org) ", ϕ)
+            println("flatact (org) ", flatact )
+        end
+
         # sort based on ϕ
         angleind         = sortperm( ϕ )
         ϕ[1:nact]        = ϕ[angleind]
@@ -406,24 +419,52 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
         flatact          = flatact[angleind]
         corrind          = fill( 0, nact )
         corrind[1]       = angleind[1]
+        # if  e1 == 92#294
+        #     println("ϕ (sorted) ", ϕ)
+        #     println("flatact (sorted) ", flatact )
+        # end
         nact = 1
         for jj in 1:length(ϕ)-1
-            if (ϕ[jj+1] - ϕ[jj]) > 1e-14 && (2*π - ϕ[jj+1]) > 1e-14
-                nact += 1
-                corrind[nact] = jj+1
+            if (ϕ[jj+1] - ϕ[jj]) > 1e-14
+                if (2*π - ϕ[jj+1]) > 1e-14
+                    nact += 1
+                    corrind[nact] = jj+1
+                else
+                    flatact[1] = flatact[1] || any(flatact[jj+1:end])
+                    if  e1 == 174#92#294
+                        println("flatact[1] ", flatact[1])
+                    end
+                end
             else
                 flatact[jj] = flatact[jj] || flatact[jj+1]
+                # if  e1 == 92#294
+                #     println("flatact (it) ", flatact)
+                # end
             end
         end
 
         ϕ       = ϕ[ corrind[1:nact] ]
+        flatact[1] = any(flatact[1:corrind[2]-1])
         flatact = flatact[ corrind[1:nact] ]
         intersec[1:nact] = intersec[ corrind[1:nact] ]
-
+        if  e1 == 174#92#294
+            println("corrind[1] ",corrind[1])
+            println("ϕ (shorted) ", ϕ)
+            println("flatact (shorted) ", flatact )
+        end
         # add last point to array to close the loop
         append!( ϕ, 2*π )
         append!( flatact, flatact[1] )
         intersec[nact+1] = intersec[1]
+
+        if  e1 == 174#92#294 #any(mesh.e[ e1, 3 ] .== boundflat) || any(mesh.e[ e1, 4 ] .== boundflat)
+            println("ϕ ", ϕ)
+            println("flatact ", flatact )
+            # if kk == 29 # this fixes the problem
+            #     flatact[1] = true
+            # end
+            println(" ")
+        end
 
         ## Generate points along cuts
         perpvec = cross(evec,zerovec)
