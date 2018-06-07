@@ -417,7 +417,7 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
                     flatact[1] = flatact[1] || any(flatact[jj+1:end])
                 end
             else
-                flatact[jj] = flatact[jj] || flatact[jj+1]
+                flatact[corrind[nact]] = flatact[corrind[nact]] || flatact[jj+1]
             end
         end
 
@@ -793,6 +793,9 @@ function collisionWarning( mesh::MeshF, fdist::Vector{Vector{Float64}} )
 
             if ledge < sum( fdist[jj] )
                 warn( "Collision detected at edge ", jj )
+                if fdist[jj][1] > ledge || fdist[jj][2] > ledge
+                    println("   protrudes!")
+                end
                 nw += 1
             end
         end
