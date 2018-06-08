@@ -386,6 +386,7 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
 
         end
 
+
         ## order points counterclockwise
         # pick first point as ϕ = 0
         zerovec = (intersec[1] - dot( intersec[1], evec ) * evec) /
@@ -409,15 +410,15 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
 
         nact = 1
         for jj in 1:length(ϕ)-1
-            if (ϕ[jj+1] - ϕ[jj]) > 1e-14
-                if (2*π - ϕ[jj+1]) > 1e-14
+            if (2*π - ϕ[jj+1]) < 1e-14
+                flatact[1] = flatact[1] || any(flatact[jj+1:end])
+            else
+                if (ϕ[jj+1] - ϕ[jj]) > 1e-14
                     nact += 1
                     corrind[nact] = jj+1
                 else
-                    flatact[1] = flatact[1] || any(flatact[jj+1:end])
+                    flatact[corrind[nact]] = flatact[corrind[nact]] || flatact[jj+1]
                 end
-            else
-                flatact[corrind[nact]] = flatact[corrind[nact]] || flatact[jj+1]
             end
         end
 
