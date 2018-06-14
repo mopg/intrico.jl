@@ -158,7 +158,7 @@ function genEdgesF3D( f::Matrix{Int64} )
   e[:,1:2] = edges[indUni,:]
 
   # add boundary information
-  e[:,3:4]   = boundsUni[indUni,:]
+  e[:,3:4]   = sort( boundsUni[indUni,:], 2 )
 
   # make e2f, f2e
   e2f = Vector{Vector{Int64}}( ne )

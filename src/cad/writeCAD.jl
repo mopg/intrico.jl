@@ -2,7 +2,7 @@
 #
 #   writeCAD.jl
 #
-#   Couple to jegads.jl to write a STEP file of the geometry.
+#   Couple to egads.jl to write a STEP file of the geometry.
 #
 #   sterno
 #   Spring 2018
@@ -19,7 +19,7 @@ Writes a CAD file for the lattice in `mesh` with the areas defined in `lat`.
 function writeCAD( mesh::MeshF,  lat::Lattice, flname::String; eps = 5.e-3, Δeps = 5.e-3 )
 
     # open egads
-    (context, status) = jegads.EG_open( )
+    (context, status) = egads.EG_open( )
     if (status < 0) error("Can't open, failure code: %i", status) end
 
     @printf( "CAD: %d nodes, %d edges\n", mesh.n, size(mesh.e,1) )
@@ -45,37 +45,37 @@ function writeCAD( mesh::MeshF,  lat::Lattice, flname::String; eps = 5.e-3, Δep
             println("   Not overwriting, data lost")
         elseif user_input[1] == 'Y' || user_input[1] == 'y'
             rm( flname )
-            status = jegads.EG_saveModel( finmodel, flname )
-            if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
+            status = egads.EG_saveModel( finmodel, flname )
+            if (status != egads.EGADS_SUCCESS) egads.cleanup(status, context) end
         else
             println("   Not overwriting, data lost")
         end
 
     else
-        status = jegads.EG_saveModel( finmodel, flname )
-        if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
+        status = egads.EG_saveModel( finmodel, flname )
+        if (status != egads.EGADS_SUCCESS) egads.cleanup(status, context) end
     end
 
     # close everything
-    status = jegads.EG_deleteObject( finmodel )
-    if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
+    status = egads.EG_deleteObject( finmodel )
+    if (status != egads.EGADS_SUCCESS) egads.cleanup(status, context) end
     # delete nodes
     for kk in 1:length( nodes )
-        status = jegads.EG_deleteObject( nodes[kk] )
-        if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
+        status = egads.EG_deleteObject( nodes[kk] )
+        if (status != egads.EGADS_SUCCESS) egads.cleanup(status, context) end
     end
-    jegads.cleanup( context )
+    egads.cleanup( context )
 
 end
 
 """
-    genNodesCAD( mesh::MeshF3D, lat::Lattice, context::jegads.ego, eps::Float64, Δeps::Float64 )
+    genNodesCAD( mesh::MeshF3D, lat::Lattice, context::egads.ego, eps::Float64, Δeps::Float64 )
 
 Generates nodes by Boolean operations between cylinders and spheres.
 """
-function genNodesCAD( mesh::MeshF3D, lat::Lattice, context::jegads.ego, eps::Float64, Δeps::Float64 )
+function genNodesCAD( mesh::MeshF3D, lat::Lattice, context::egads.ego, eps::Float64, Δeps::Float64 )
 
-    nodes = fill( jegads.ego(0), mesh.n )
+    nodes = fill( egads.ego(0), mesh.n )
 
     for ii in 1:mesh.n
         @printf(".")
@@ -83,18 +83,18 @@ function genNodesCAD( mesh::MeshF3D, lat::Lattice, context::jegads.ego, eps::Flo
 
         status_boolean = Cint(1)
 
-        emodel = jegads.ego(0)
-        ebody  = jegads.ego(0)
+        emodel = egads.ego(0)
+        ebody  = egads.ego(0)
 
         inod = 0
 
-        while (status_boolean != jegads.EGADS_SUCCESS)
+        while (status_boolean != egads.EGADS_SUCCESS)
 
             # Generate sphere
             datasph = vcat( mesh.p[ii,:], sqrt(ar_max/π)*(1.0 + eps) )
 
-            (ebody, status) = jegads.EG_makeSolidBody(context, jegads.SPHERE, datasph)
-            if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
+            (ebody, status) = egads.EG_makeSolidBody(context, egads.SPHERE, datasph)
+            if (status != egads.EGADS_SUCCESS) egads.cleanup(status, context) end
 
             # Generate half length rods
             for jj in 1:length(mesh.n2e[ii])
@@ -106,8 +106,8 @@ function genNodesCAD( mesh::MeshF3D, lat::Lattice, context::jegads.ego, eps::Flo
                                 ave,
                                 sqrt( lat.ar[ie] / π ) )
 
-                (etemp,status) = jegads.EG_makeSolidBody(context, jegads.CYLINDER, datacyl)
-                if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
+                (etemp,status) = egads.EG_makeSolidBody(context, egads.CYLINDER, datacyl)
+                if (status != egads.EGADS_SUCCESS) egads.cleanup(status, context) end
 
                 if inod == 2
                     Δx = 0.50 * (mesh.p[nods[2],:] - mesh.p[nods[1],:])
@@ -116,61 +116,61 @@ function genNodesCAD( mesh::MeshF3D, lat::Lattice, context::jegads.ego, eps::Flo
                                0.0, 1.0, 0.0, Δx[2],
                                0.0, 0.0, 1.0, Δx[3] ]
 
-                    exform_ptr = Ref{jegads.ego}()
-                    status = jegads.EG_makeTransform(context, matrix, exform_ptr)
-                    if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
+                    exform_ptr = Ref{egads.ego}()
+                    status = egads.EG_makeTransform(context, matrix, exform_ptr)
+                    if (status != egads.EGADS_SUCCESS) egads.cleanup(status, context) end
 
-                    (etemp2,status) = jegads.EG_copyObject(etemp, exform_ptr[])
-                    if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
+                    (etemp2,status) = egads.EG_copyObject(etemp, exform_ptr[])
+                    if (status != egads.EGADS_SUCCESS) egads.cleanup(status, context) end
 
-                    status = jegads.EG_deleteObject(exform_ptr[])
-                    if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
+                    status = egads.EG_deleteObject(exform_ptr[])
+                    if (status != egads.EGADS_SUCCESS) egads.cleanup(status, context) end
 
-                    status = jegads.EG_deleteObject(etemp)
-                    if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
+                    status = egads.EG_deleteObject(etemp)
+                    if (status != egads.EGADS_SUCCESS) egads.cleanup(status, context) end
 
-                    (etemp,status) = jegads.EG_copyObject(etemp2, C_NULL)
-                    if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
+                    (etemp,status) = egads.EG_copyObject(etemp2, C_NULL)
+                    if (status != egads.EGADS_SUCCESS) egads.cleanup(status, context) end
 
-                    status = jegads.EG_deleteObject(etemp2)
-                    if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
+                    status = egads.EG_deleteObject(etemp2)
+                    if (status != egads.EGADS_SUCCESS) egads.cleanup(status, context) end
 
                 end
 
                 # join to rest of node
-                (emodel, status) = jegads.EG_solidBoolean(ebody, etemp, jegads.FUSION)
-                # if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
+                (emodel, status) = egads.EG_solidBoolean(ebody, etemp, egads.FUSION)
+                # if (status != egads.EGADS_SUCCESS) egads.cleanup(status, context) end
                 status_boolean = status
 
                 # delete temporary bodies
-                status = jegads.EG_deleteObject(ebody)
-                if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
-                status = jegads.EG_deleteObject(etemp)
-                if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
+                status = egads.EG_deleteObject(ebody)
+                if (status != egads.EGADS_SUCCESS) egads.cleanup(status, context) end
+                status = egads.EG_deleteObject(etemp)
+                if (status != egads.EGADS_SUCCESS) egads.cleanup(status, context) end
 
-                if (status_boolean != jegads.EGADS_SUCCESS)
+                if (status_boolean != egads.EGADS_SUCCESS)
                     eps += Δeps
                     @printf("   NOTE: increasing radius of node %d by %3.2f%%\n", ii, Δeps*100.)
                     break
                 end
 
                 # get body from model
-                (ebody, status) = jegads.getBodyFromModel( emodel )
-                if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
+                (ebody, status) = egads.getBodyFromModel( emodel )
+                if (status != egads.EGADS_SUCCESS) egads.cleanup(status, context) end
 
             end
 
         end
 
         # save model
-        (nodes[ii], status) = jegads.EG_copyObject(emodel, C_NULL)
-        if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
+        (nodes[ii], status) = egads.EG_copyObject(emodel, C_NULL)
+        if (status != egads.EGADS_SUCCESS) egads.cleanup(status, context) end
 
         # delete body and model
-        status = jegads.EG_deleteObject(ebody)
-        if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
-        status = jegads.EG_deleteObject(emodel)
-        if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
+        status = egads.EG_deleteObject(ebody)
+        if (status != egads.EGADS_SUCCESS) egads.cleanup(status, context) end
+        status = egads.EG_deleteObject(emodel)
+        if (status != egads.EGADS_SUCCESS) egads.cleanup(status, context) end
 
     end
 
@@ -181,13 +181,13 @@ function genNodesCAD( mesh::MeshF3D, lat::Lattice, context::jegads.ego, eps::Flo
 end
 
 """
-    genModelCAD( mesh::MeshF3D, nodes::Vector{jegads.ego}, context::jegads.ego )
+    genModelCAD( mesh::MeshF3D, nodes::Vector{egads.ego}, context::egads.ego )
 
 Stitches the nodes together into one final model.
 """
-function genModelCAD( mesh::MeshF3D, nodes::Vector{jegads.ego}, context::jegads.ego )
+function genModelCAD( mesh::MeshF3D, nodes::Vector{egads.ego}, context::egads.ego )
 
-    efaces_ptr = Vector{ Ptr{jegads.ego} }( mesh.n )
+    efaces_ptr = Vector{ Ptr{egads.ego} }( mesh.n )
     nface_vec  = Vector{Int64}( mesh.n )
 
     # get faces of all nodes first
@@ -195,12 +195,12 @@ function genModelCAD( mesh::MeshF3D, nodes::Vector{jegads.ego}, context::jegads.
     for kk in 1:mesh.n
 
         # get body from model
-        (ebody,status) = jegads.getBodyFromModel( nodes[ kk ] )
-        if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
+        (ebody,status) = egads.getBodyFromModel( nodes[ kk ] )
+        if (status != egads.EGADS_SUCCESS) egads.cleanup(status, context) end
 
         # get faces from body
-        nface_vec[kk], ef_ptr, status = jegads.EG_getBodyFaces( ebody, toler )
-        if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
+        nface_vec[kk], ef_ptr, status = egads.EG_getBodyFaces( ebody, toler )
+        if (status != egads.EGADS_SUCCESS) egads.cleanup(status, context) end
 
         efaces_ptr[kk] = ef_ptr[]
 
@@ -218,10 +218,10 @@ function genModelCAD( mesh::MeshF3D, nodes::Vector{jegads.ego}, context::jegads.
         nod2 = mesh.e[jj,2]
 
         # get bodies from model
-        (ebody1,status) = jegads.getBodyFromModel( nodes[ nod1 ] )
-        if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
-        (ebody2,status) = jegads.getBodyFromModel( nodes[ nod2 ] )
-        if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
+        (ebody1,status) = egads.getBodyFromModel( nodes[ nod1 ] )
+        if (status != egads.EGADS_SUCCESS) egads.cleanup(status, context) end
+        (ebody2,status) = egads.getBodyFromModel( nodes[ nod2 ] )
+        if (status != egads.EGADS_SUCCESS) egads.cleanup(status, context) end
 
         # match faces
         nmatch  = 0
@@ -229,8 +229,8 @@ function genModelCAD( mesh::MeshF3D, nodes::Vector{jegads.ego}, context::jegads.
 
         cnt = 0
         while nmatch != 1 && cnt < cntmax
-            (nmatch,matches,status) = jegads.EG_matchBodyFaces( ebody1, ebody2, tolerf )
-            if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
+            (nmatch,matches,status) = egads.EG_matchBodyFaces( ebody1, ebody2, tolerf )
+            if (status != egads.EGADS_SUCCESS) egads.cleanup(status, context) end
             if cnt == 0
                 tolerf += 1e-15
             else
@@ -254,7 +254,7 @@ function genModelCAD( mesh::MeshF3D, nodes::Vector{jegads.ego}, context::jegads.
     end
 
     # generate list of faces
-    efaces = Vector{ jegads.ego }( sum(nface_vec) )
+    efaces = Vector{ egads.ego }( sum(nface_vec) )
     fcnt = 1
     for kk in 1:mesh.n
 
@@ -269,8 +269,8 @@ function genModelCAD( mesh::MeshF3D, nodes::Vector{jegads.ego}, context::jegads.
 
     # join model
     tolerj = Cdouble(0.0)
-    (emodel, status) = jegads.EG_sewFaces( Cint(fcnt), efaces, tolerj, Cint(0) )
-    if (status != jegads.EGADS_SUCCESS) jegads.cleanup(status, context) end
+    (emodel, status) = egads.EG_sewFaces( Cint(fcnt), efaces, tolerj, Cint(0) )
+    if (status != egads.EGADS_SUCCESS) egads.cleanup(status, context) end
 
     return emodel
 
