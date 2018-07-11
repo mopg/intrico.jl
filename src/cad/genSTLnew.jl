@@ -34,7 +34,7 @@ function genSTLnew( mesh::MeshF,  lat::Lattice, flname::String; n::Int64 = 8, bo
 
     # generate all faces (and write)
     factot = [ 0 ]
-    genFacesNodsCyl( mesh, lat, n, factot, fid, edgWrite, boundflat )
+    actptsNods, edgesNods = genFacesNodsCyl( mesh, lat, n, factot, fid, edgWrite, boundflat )
 
     # close STL
     close( fid )
@@ -51,6 +51,8 @@ function genSTLnew( mesh::MeshF,  lat::Lattice, flname::String; n::Int64 = 8, bo
     write( fid, UInt32( factot[1] ) )
     # close STL
     close( fid )
+
+    return actptsNods, edgesNods
 end
 
 """
@@ -77,7 +79,7 @@ function genSTLnew( mesh::MeshF,  lat::Lattice, flnames::Vector{String},
 
     # generate all faces (and write)
     factot = fill( 0, length(flnames) )
-    genFacesNodsCyl( mesh, lat, n, factot, fid, edgWrite, boundflat )
+    actptsNods, edgesNods = genFacesNodsCyl( mesh, lat, n, factot, fid, edgWrite, boundflat )
 
     # close STL
     for ii in 1:length(flnames)
@@ -100,6 +102,8 @@ function genSTLnew( mesh::MeshF,  lat::Lattice, flnames::Vector{String},
         close( fid )
 
     end
+
+    return actptsNods, edgesNods
 
 end
 
@@ -134,9 +138,12 @@ function genFacesNodsCyl( mesh::MeshF, lat::Lattice, n::Int64, nfac::Vector{Int6
     end
 
     # generate nodes
+    actptsNods = Vector{Vector{SVector{3,Float64}}}( mesh.n )
+    edgesNods  = Vector{Vector{SVector{4,Int64}}}( mesh.n )
     for nn in 1:mesh.n
 
-        genFacesNod( nn, mesh, lat, n, ptsCylEdge, nfac, fid, edgWrite, fdist, boundflat, nvecflat )
+        genFacesNod( nn, mesh, lat, n, ptsCylEdge, nfac, fid,
+                     edgWrite, fdist, boundflat, nvecflat, actptsNods, edgesNods )
 
     end
 
@@ -149,6 +156,8 @@ function genFacesNodsCyl( mesh::MeshF, lat::Lattice, n::Int64, nfac::Vector{Int6
             genFacesCyl( kk, mesh, ptsCylEdge[kk], nfac, fid, edgWrite[kk] )
         end
     end
+
+    return actptsNods, edgesNods
 
 end
 
@@ -163,10 +172,16 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
                       fid::Union{IOStream,Vector{IOStream}},
                       edgWrite::Vector{Vector{Bool}},
                       fdist::Vector{Vector{Float64}},
-                      boundflat::Vector{Int64}, nvecflat::Vector{SVector{3,Float64}} )
+                      boundflat::Vector{Int64}, nvecflat::Vector{SVector{3,Float64}},
+                      actptsNods::Vector{Vector{SVector{3,Float64}}},
+                      edgesNods::Vector{Vector{SVector{4,Int64}}} )
 
     # current coordinate
     pcurr = SVector{3}( mesh.p[kk,:] )
+
+    # initialize connectivity information
+    actptsNods[kk] = Vector{SVector{3,Float64}}( 0 )
+    edgesNods[kk]  = Vector{SVector{4,Int64}}( 0 )
 
     # generate pairs of edges
     edg   = [i for i in 1:length(mesh.n2e[kk])]
@@ -197,10 +212,12 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
 
     # compute crossing point and normal vector
     normvec  = Vector{Vector{SVector{3,Float64}}}( length(edg) )
+    eveclink = Vector{Vector{Int64}}( length(edg) )
     # tangvec  = Vector{Vector{Vector{Float64}}}( length(edg) )
     lvmax = fill( 0.0, length(edg) )
     for jj in 1:length(edg)
         normvec[jj]  = Vector{SVector{3,Float64}}( length(edg0)-1 )
+        eveclink[jj] = Vector{Int64}( length(edg0)-1 )
         # tangvec[jj]  = Vector{Vector{Float64}}( length(edg)-1 )
     end
     indcnt = fill(1, length(edg) )
@@ -237,6 +254,10 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
         # normal vectors
         normvec[edg_i1][ indcnt[edg_i1] ] = SVector{3}( (vec1-vec2) / magdiff )
         normvec[edg_i2][ indcnt[edg_i2] ] = SVector{3}( (vec2-vec1) / magdiff )
+
+        # add edge links
+        eveclink[edg_i1][ indcnt[edg_i1] ] = e2
+        eveclink[edg_i2][ indcnt[edg_i2] ] = e1
 
         indcnt[edg_i1] += 1
         indcnt[edg_i2] += 1
@@ -284,6 +305,7 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
         testpt   = mesh.p[ nod, : ] - mesh.p[ kk, : ] # distance to this point is measured to determine which is closer, distance is relative to current node
         nunique  = uniqueNumPairs( nnormals )
         intersec = Vector{SVector{3,Float64}}( max( 2*(nunique - nnormals) + 1 + nflat, 3 ) )
+        # edge_pairs = Vector{SVector{2,Int64}}( max( 2*(nunique - nnormals) + 1 + nflat, 3 ) )
 
         nact = 0
         if nunique == 1 # if nunique is 1, there are no intersections
@@ -302,9 +324,11 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
 
             nact += 1
             intersec[nact] = SVector{3}( 1.0 * lvec2)
+            # edge_pairs[nact] = SVector{2}( sort(mesh.n2e[kk][ edg[ indedges ] ]) )
 
             nact += 1
             intersec[nact] = SVector{3}(-1.0 * lvec2)
+            # edge_pairs[nact] = SVector{2}( sort(mesh.n2e[kk][ edg[ indedges ] ]) )
 
         else
             for jj in 1:nunique # note: number of planes is length(edg)-1, so can reuse part of upairs
@@ -432,6 +456,20 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
         append!( flatact, flatact[1] )
         intersec[nact+1] = intersec[1]
 
+        # add active points to overall node points
+        actptlinks = [ [i for i in 1:nact]; 1 ] # if no points have been added yet
+        if ee > 1
+            jj = 1 # first point
+            indnod = findActPointsNod( intersec[jj], actptsNods[kk], actptlinks, jj )
+            actptlinks[end] = indnod
+            for jj in 2:nact
+                indnod = findActPointsNod( intersec[jj], actptsNods[kk], actptlinks, jj )
+            end
+        end
+
+        # add connectivity for entire node
+        edge_pairs = Vector{SVector{4,Int64}}( nact ) # [nod1,nod2,strut1,strut2]
+
         ## Generate points along cuts
         perpvec = cross(evec,zerovec)
         perpvec ./= norm(perpvec)
@@ -448,6 +486,10 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
             normind = findNormPlane( currpt, testpt, normvec[ee], evec )
 
             normcurr = normvec[ee][normind]
+
+            # Add information about which edge links the struts
+            findEdgesNod( edgesNods[kk], SVector{4}( [ actptlinks[jj]; actptlinks[jj+1];
+                                                       sort([e1, eveclink[ee][normind]]) ] ) )
 
             projectCircle = true
             if flatact[jj] && flatact[jj+1]
@@ -784,6 +826,39 @@ function writeFacetSTLB( vert::SVector{3,SVector{3,Float64}}, fid::IOStream )
 
 end
 
+"""
+    writeFacetSTLB( vert::SVector{3,SVector{3,Float64}}, fid::IOStream )
+
+Writes one STL facet for binary file.
+"""
+function writeFacetSTLB( vert::SVector{3,SVector{3,Float64}},
+                         normal::SVector{3,Float64}, fid::IOStream )
+
+    # normals
+    write( fid, Float32( normal[1] ) )
+    write( fid, Float32( normal[2] ) )
+    write( fid, Float32( normal[3] ) )
+
+    # Vertex 1
+    write( fid, Float32( vert[1][1] ) )
+    write( fid, Float32( vert[1][2] ) )
+    write( fid, Float32( vert[1][3] ) )
+
+    # Vertex 2
+    write( fid, Float32( vert[2][1] ) )
+    write( fid, Float32( vert[2][2] ) )
+    write( fid, Float32( vert[2][3] ) )
+
+    # Vertex 3
+    write( fid, Float32( vert[3][1] ) )
+    write( fid, Float32( vert[3][2] ) )
+    write( fid, Float32( vert[3][3] ) )
+
+    # End facet
+    write( fid, UInt16(0) )
+
+end
+
 function collisionWarning( mesh::MeshF, fdist::Vector{Vector{Float64}} )
 
     nw = 0
@@ -806,6 +881,50 @@ function collisionWarning( mesh::MeshF, fdist::Vector{Vector{Float64}} )
     if nw > 0
         println( "" )
         warn( "Generated ", nw, " collisions" )
+    end
+
+end
+
+function findActPointsNod( intersec::SVector{3,Float64},
+                           act_points_nod::Vector{SVector{3,Float64}},
+                           actptlinks::Vector{Int64}, ind::Int64 )
+    tol = 1e-10
+
+    indnew = 0
+    for jj in 1:length(act_points_nod)
+        if norm( intersec - act_points_nod[jj] ) < tol
+            indnew = jj
+            break
+        end
+    end
+
+    # add new points
+    if indnew == 0
+        append!( act_points_nod, [intersec] )
+        indnew = length(act_points_nod)
+        actptlinks[ind] = indnew
+
+    end
+
+    actptlinks[ind] = indnew
+
+    return indnew
+
+end
+
+function findEdgesNod( edges_nod::Vector{SVector{4,Int64}}, edge::SVector{4,Int64} )
+
+    indnew = 0
+    for jj in 1:length(edges_nod)
+        if edge[3] == edges_nod[jj][3] && edge[4] == edges_nod[jj][4]
+            indnew = jj
+            break
+        end
+    end
+
+    # add new edge...
+    if indnew == 0
+        append!( edges_nod, [edge] )
     end
 
 end
