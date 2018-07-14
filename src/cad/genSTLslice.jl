@@ -117,12 +117,21 @@ function writeNodStrutSlice( mesh::MeshF, lat::Lattice,
         for kk in 1:length(edgesNods[nn])
             nod1 = mesh.p[nn,:] + actptsNods[nn][ edgesNods[nn][kk][1] ]
             nod2 = mesh.p[nn,:] + actptsNods[nn][ edgesNods[nn][kk][2] ]
+            if nn == 10
+                println("kk ", kk)
+                println("nod1 ", nod1 )
+                println("nod2 ", nod2 )
+                println("edges ", edgesNods[nn][kk][3:4])
+            end
             if (dot(nod1,nprinter) - z) * ( dot(nod2,nprinter) - z ) < 0.
                 # println("edgesNods[nn][kk] ", edgesNods[nn][kk])
                 # println("mesh.n2e[nn] ", mesh.n2e[nn])
                 # println(" bool1 ", mesh.n2e[nn] .== edgesNods[nn][kk][3] )
                 # println(" bool2 ", mesh.n2e[nn] .== edgesNods[nn][kk][4] )
                 intersecNodEdge[kk] = true
+                if nn == 10
+                    println("true")
+                end
                 intersecEdge[ mesh.n2e[nn] .== edgesNods[nn][kk][3] ] = true
                 intersecEdge[ mesh.n2e[nn] .== edgesNods[nn][kk][4] ] = true
             end
@@ -264,6 +273,7 @@ function writeNodSlice( mesh::MeshF, lat::Lattice, nn::Int64,
 
     println("nn ", nn)
     println("intersecNodEdge ", intersecNodEdge)
+    println("edgesNods ", edgesNods )
 
     Δn = ( z - dot(nodvec,nprinter) ) * nprinter
 
@@ -299,7 +309,6 @@ function writeNodSlice( mesh::MeshF, lat::Lattice, nn::Int64,
             strutact[isa] = el[3]; isa += 1
         end
         ind4 = find( strutact .== el[4] )
-        println("strutact ", strutact)
         if isempty( ind4 )
             ind4 = [isa]
             strutact[isa] = el[4]; isa += 1
@@ -310,10 +319,6 @@ function writeNodSlice( mesh::MeshF, lat::Lattice, nn::Int64,
 
         nvec1 = SVector{3}( mesh.p[nod1,:] - mesh.p[nn,:]); nvec1 = nvec1/norm(nvec1)
         nvec2 = SVector{3}( mesh.p[nod2,:] - mesh.p[nn,:]); nvec2 = nvec2/norm(nvec2)
-
-        # nmajor = nvec1 + nvec2; nmajor ./= norm(nmajor)
-        # nperp  = nvec1 - nvec2; nperp  ./= norm(nperp)
-        # nminor = cross(nmajor,nperp)
 
         ncut = nvec1 - nvec2; ncut = ncut/norm(ncut)
         nline = cross(ncut,nprinter)
@@ -329,7 +334,23 @@ function writeNodSlice( mesh::MeshF, lat::Lattice, nn::Int64,
             nline = -nline
         end
 
-        intersecPts[jj] = findIntersecEdge( nvec1, nline, Δn, rad, ℓ) + nodvec
+        intersectemp = findIntersecEdge( nvec1, nline, Δn, rad, ℓ) + nodvec
+
+        # check if orientation ok
+        # check if angle going from actpts[1] to actps[2] is the same as going from actps[1] to intersectemp
+        apt1 = actptsNods[el[1]]; Δapt1 = apt1 - nodvec
+        apt2 = actptsNods[el[2]]
+        orien1 = dot( ncut, cross(Δapt1,apt2-nodvec) )
+        orien2 = dot( ncut, cross(Δapt1,intersectemp-nodvec) )
+        # if orien1*orien2 < 0.
+        #     nline = -nline
+        #     intersectemp = findIntersecEdge( nvec1, nline, Δn, rad, ℓ) + nodvec
+        # end
+
+        # TODO: this crap doesn't work because always ensuring nline points to nvec1 is wrong,
+        # which is why we essentially get twice the same point for the diamond
+
+        intersecPts[jj] = intersectemp
         println("intersecPts[jj] ", intersecPts[jj] )
         println("el[3] ", el[3], " el[4] ", el[4] )
         println("nvec1 ", nvec1)
@@ -377,8 +398,8 @@ function writeNodSlice( mesh::MeshF, lat::Lattice, nn::Int64,
 
             # flat edge
             xptsfl[1] = intersecPts[ipt1]
-            xptsfl[2] = intersecPts[ipt1] + nvec * ( ledge * dot(intersecPts[ipt1] - Δnodvec,nvec) )
-            xptsfl[3] = intersecPts[ipt2] + nvec * ( ledge * dot(intersecPts[ipt2] - Δnodvec,nvec) )
+            xptsfl[2] = intersecPts[ipt1] + nvec * ( 0.5*ledge - dot(intersecPts[ipt1] - Δnodvec,nvec) )
+            xptsfl[3] = intersecPts[ipt2] + nvec * ( 0.5*ledge - dot(intersecPts[ipt2] - Δnodvec,nvec) )
             xptsfl[4] = intersecPts[ipt2]
 
             writeSTLcontour( xptsfl, Δnodvec, nprinter, 3, fid )
@@ -490,5 +511,33 @@ function findIntersecEdge( nvec1::SVector{3,Float64}, nline::SVector{3,Float64},
     end
 
     return (b*nline + Δn)
+
+end
+
+function checkIntersecCorr( currpt::SVector{3,Float64}, testpt::Vector{Float64},
+                            normvec::Vector{SVector{3,Float64}}, evec::Vector{Float64} )
+
+    dist    =  norm( currpt - testpt )
+    distorg = dist
+    act = false
+    for ii in 1:length(normvec)
+        # loop over intersecting planes
+        d = dot( - currpt, normvec[ii] ) / dot( evec, normvec[ii] ) # scalar value for which line intersects plane
+        ipt = currpt + d * evec
+
+        cdist = norm( ipt - testpt )
+
+        if cdist < dist
+            # this point is closer
+            dist = cdist
+        end
+    end
+
+    # is point active? Only if new distance is same as original distance
+    if abs(dist - distorg)/abs(dist) < 1e-14
+        act = true
+    end
+
+    return act
 
 end
