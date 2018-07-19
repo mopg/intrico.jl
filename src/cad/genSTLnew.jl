@@ -139,7 +139,7 @@ function genFacesNodsCyl( mesh::MeshF, lat::Lattice, n::Int64, nfac::Vector{Int6
 
     # generate nodes
     actptsNods = Vector{Vector{SVector{3,Float64}}}( mesh.n )
-    edgesNods  = Vector{Vector{SVector{4,Int64}}}( mesh.n )
+    edgesNods  = Vector{Vector{SVector{5,Int64}}}( mesh.n )
     for nn in 1:mesh.n
 
         genFacesNod( nn, mesh, lat, n, ptsCylEdge, nfac, fid,
@@ -174,14 +174,14 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
                       fdist::Vector{Vector{Float64}},
                       boundflat::Vector{Int64}, nvecflat::Vector{SVector{3,Float64}},
                       actptsNods::Vector{Vector{SVector{3,Float64}}},
-                      edgesNods::Vector{Vector{SVector{4,Int64}}} )
+                      edgesNods::Vector{Vector{SVector{5,Int64}}} )
 
     # current coordinate
     pcurr = SVector{3}( mesh.p[kk,:] )
 
     # initialize connectivity information
     actptsNods[kk] = Vector{SVector{3,Float64}}( 0 )
-    edgesNods[kk]  = Vector{SVector{4,Int64}}( 0 )
+    edgesNods[kk]  = Vector{SVector{5,Int64}}( 0 )
 
     # generate pairs of edges
     edg   = [i for i in 1:length(mesh.n2e[kk])]
@@ -410,7 +410,6 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
 
         end
 
-
         ## order points counterclockwise
         # pick first point as ϕ = 0
         zerovec = (intersec[1] - dot( intersec[1], evec ) * evec) /
@@ -437,7 +436,7 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
             if (2*π - ϕ[jj+1]) < 1e-14
                 flatact[1] = flatact[1] || any(flatact[jj+1:end])
             else
-                if (ϕ[jj+1] - ϕ[jj]) > 1e-14
+                if (ϕ[jj+1] - ϕ[jj]) > 1e-6
                     nact += 1
                     corrind[nact] = jj+1
                 else
@@ -452,23 +451,28 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
         intersec[1:nact] = intersec[ corrind[1:nact] ]
 
         # add last point to array to close the loop
-        append!( ϕ, 2*π )
-        append!( flatact, flatact[1] )
-        intersec[nact+1] = intersec[1]
+        if (2*π - ϕ[end]) > 1e-3
+            append!( ϕ, 2*π )
+            append!( flatact, flatact[1] )
+            intersec[nact+1] = intersec[1]
+        else
+            ϕ[end] = 2*π
+            nact -= 1
+        end
 
         # add active points to overall node points
         actptlinks = [ [i for i in 1:nact]; 1 ] # if no points have been added yet
-        if ee > 1
+        # if ee > 1
             jj = 1 # first point
             indnod = findActPointsNod( intersec[jj], actptsNods[kk], actptlinks, jj )
             actptlinks[end] = indnod
             for jj in 2:nact
                 indnod = findActPointsNod( intersec[jj], actptsNods[kk], actptlinks, jj )
             end
-        end
+        # end
 
         # add connectivity for entire node
-        edge_pairs = Vector{SVector{4,Int64}}( nact ) # [nod1,nod2,strut1,strut2]
+        edge_pairs = Vector{SVector{5,Int64}}( nact ) # [nod1,nod2,strut1,strut2]
 
         ## Generate points along cuts
         perpvec = cross(evec,zerovec)
@@ -483,13 +487,14 @@ function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
             # figure out on which plane to project
             ϕhalf   = ( ϕ[jj] + ϕ[jj+1] ) / 2.
             currpt  = rmax * ( zerovec * cos(ϕhalf) + perpvec * sin(ϕhalf) )
-            normind = findNormPlane( currpt, testpt, normvec[ee], evec )
+            normind, halfintersec = findNormPlane( currpt, testpt, normvec[ee], evec )
 
             normcurr = normvec[ee][normind]
 
             # Add information about which edge links the struts
-            findEdgesNod( edgesNods[kk], SVector{4}( [ actptlinks[jj]; actptlinks[jj+1];
-                                                       sort([e1, eveclink[ee][normind]]) ] ) )
+            indhalf = findActPointsNod( halfintersec, actptsNods[kk] )
+            findEdgesNod( edgesNods[kk], SVector{5}( [ actptlinks[jj]; actptlinks[jj+1];
+                                                       sort([e1, eveclink[ee][normind]]); indhalf ] ) )
 
             projectCircle = true
             if flatact[jj] && flatact[jj+1]
@@ -689,6 +694,8 @@ function findNormPlane( currpt::SVector{3,Float64}, testpt::Vector{Float64},
     dist = 3*norm( currpt - testpt )
     ind  = 0
 
+    intpt = SVector{3}( 0., 0., 0. )
+
     for ii in 1:length(normvec)
         # loop over intersecting planes
         d = dot( - currpt, normvec[ii] ) / dot( evec, normvec[ii] ) # scalar value for which line intersects plane
@@ -698,13 +705,14 @@ function findNormPlane( currpt::SVector{3,Float64}, testpt::Vector{Float64},
 
         if cdist < dist
             # this point is closer
-            dist = cdist
-            ind  = ii
+            dist  = cdist
+            ind   = ii
+            intpt = ipt
         end
         # end
     end
 
-    return ind
+    return ind, intpt
 
 end
 
@@ -902,8 +910,6 @@ function findActPointsNod( intersec::SVector{3,Float64},
     if indnew == 0
         append!( act_points_nod, [intersec] )
         indnew = length(act_points_nod)
-        actptlinks[ind] = indnew
-
     end
 
     actptlinks[ind] = indnew
@@ -912,7 +918,29 @@ function findActPointsNod( intersec::SVector{3,Float64},
 
 end
 
-function findEdgesNod( edges_nod::Vector{SVector{4,Int64}}, edge::SVector{4,Int64} )
+function findActPointsNod( intersec::SVector{3,Float64},
+                           act_points_nod::Vector{SVector{3,Float64}} )
+    tol = 1e-10
+
+    indnew = 0
+    for jj in 1:length(act_points_nod)
+        if norm( intersec - act_points_nod[jj] ) < tol
+            indnew = jj
+            break
+        end
+    end
+
+    # add new points
+    if indnew == 0
+        append!( act_points_nod, [intersec] )
+        indnew = length(act_points_nod)
+    end
+
+    return indnew
+
+end
+
+function findEdgesNod( edges_nod::Vector{SVector{5,Int64}}, edge::SVector{5,Int64} )
 
     indnew = 0
     for jj in 1:length(edges_nod)
