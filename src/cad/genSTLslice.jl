@@ -6,9 +6,6 @@ function genSTLslice( mesh::MeshF,  lat::Lattice, flname::String,
 
     # z is defined from origin
 
-    # TODO: - horizontal
-    #       - node geometry
-
     # open STL file
     fid = open( flname, "w" )
 
@@ -190,7 +187,6 @@ function writeNodStrutSlice( mesh::MeshF, lat::Lattice,
                 nperp = nperp/norm(nperp)
             else
                 nzero = cross(nvec,nperp)
-                # nzero = SVector{3,Float64}( nullspace( Matrix([nvec nperp]') )[:] )
             end
             nzero = nzero/norm(nzero)
 
@@ -265,38 +261,15 @@ function writeNodSlice( mesh::MeshF, lat::Lattice, nn::Int64,
 
     nodvec = SVector{3}( mesh.p[nn,:] )
 
-    # println("nn ", nn)
-    # println("intersecEdge ", intersecEdge)
-    # println("intersecNodEdge ", intersecNodEdge)
-    # println("edgesNods ", edgesNods )
-
     Δn = ( z - dot(nodvec,nprinter) ) * nprinter
 
     Δnodvec = nodvec + Δn
 
-    nint = count( intersecEdge )#; println("nint ", nint)
-
-    intersecPts = Vector{SVector{3,Float64}}( nint )
-    sintersec   = fill( SVector{2}( 0, 0 ), nint ) # which intersec points for which strut
-    strutact    = fill( 0, nint ) # which struts are actually active
-    isa = 1
+    nint = count( intersecEdge )
 
     xpts   = Vector{ SVector{3,Float64} }( n+1 )
     xptscl = Vector{ SVector{3,Float64} }( 3 )
     xptsfl = Vector{ SVector{3,Float64} }( 4 )
-
-    # edgeslink = Vector{ SVector{2,Int64} }( length(mesh.n2e[nn]) )
-    #
-    # for jj in 1:length( intersecNodEdge )
-    #
-    #     if !intersecNodEdge[kk]
-    #         continue
-    #     end
-    #     e1 = edgesNods[jj][3]
-    #     e2 = edgesNods[jj][4]
-    #
-    #     if edgeslink[e1]
-    # end
 
     # loop over intersecting edges
     for kk in 1:length( mesh.n2e[nn] )
@@ -314,8 +287,6 @@ function writeNodSlice( mesh::MeshF, lat::Lattice, nn::Int64,
         ihalf1 = 0
         ihalf2 = 0
         ct = 1
-        iactpt1 = SVector{2}( 0, 0 )
-        iactpt2 = SVector{2}( 0, 0 )
         for el in edgesNods
             if !intersecNodEdge[ct]
                 ct += 1
@@ -331,11 +302,9 @@ function writeNodSlice( mesh::MeshF, lat::Lattice, nn::Int64,
             end
             if e1 > 0
                 e2 = enew
-                iactpt2 = SVector{2}( el[1], el[2] )
                 ihalf2  = el[5]
             else
                 e1 = enew
-                iactpt1 = SVector{2}( el[1], el[2] )
                 ihalf1  = el[5]
             end
             ct += 1
@@ -350,125 +319,19 @@ function writeNodSlice( mesh::MeshF, lat::Lattice, nn::Int64,
         nvec1 = SVector{3}( mesh.p[nod1,:] - mesh.p[nn,:]); nvec1 = nvec1/norm(nvec1)
         nvec2 = SVector{3}( mesh.p[nod2,:] - mesh.p[nn,:]); nvec2 = nvec2/norm(nvec2)
 
-        nvec0proj = nvec0 - dot(nvec0,nprinter) * nprinter
-        nvec0test = cross(nvec0proj,nprinter)
-        # if dot(nvec0test,nvec1) * dot(nvec0test,nvec1) > 1e-9
-        #     println("this shit is true")
-        #     nvec0test = -nvec0test
-        if norm(nvec0test) < 1e-10
-            # nvectemp = SVector{3}( nprinter[3], nprinter[1], nprinter[2] )
-            # nvec0test = nvectemp - dot(nvectemp,nprinter) * nprinter
-            nvec0test = -(nvec1 + nvec2); nvec0 = nvec0 / norm(nvec0)
-        end
-
         ncut1 = nvec0 - nvec1; ncut1 = ncut1/norm(ncut1)
         ncut2 = nvec0 - nvec2; ncut2 = ncut2/norm(ncut2)
         nline1 = cross(ncut1,nprinter); nline1 = nline1/norm(nline1)
         nline2 = cross(ncut2,nprinter); nline2 = nline2/norm(nline2)
 
-        # ----
-        # if dot(nline1,nvec0test) < 0.
-        #     nline1 = -nline1
-        # end
-        # if dot(nline2,nvec0test) < 0.
-        #     nline2 = -nline2
-        # end
-        # println("nn ", nn, " e0 ", e0)
-        # println(" nvec0 ", nvec0 )
-        # println(" nvec0test ", nvec0test )
-        # println(" nline1 ", nline1)
-        # println(" nline2 ", nline2)
-        # println(" dot(nline1,nvec0test) ", dot(nline1,nvec0test))
-        # println(" dot(nline2,nvec0test) ", dot(nline2,nvec0test))
-        #
-        # # use that to figure out the correct sign of nline
-        # dotp1 = dot(nline1,nvec0proj)
-        # dotp2 = dot(nline2,nvec0proj)
-        # if ( abs( abs(dotp1) - 1. ) < 1e-10 ) && ( abs( abs(dotp2) - 1. ) < 1e-10 )
-        #     nline1 = nvec0proj
-        #     nline2 = nvec0proj
-        # elseif dotp1 < dotp2
-        #     nline1 = -nline1
-        # elseif dotp2 < dotp1
-        #     nline2 = -nline2
-        # end
-        # println(" dotp1 ", dotp1 )
-        # println(" dotp2 ", dotp2 )
-        # println(" ")
-        # ----
-
-        nave1 = nvec0 + nvec1; nave1 = nave1 / norm(nave1)
-        nave2 = nvec0 + nvec2; nave2 = nave2 / norm(nave2)
-        if nn == 1
-            println( "nn ", nn, " e0 ", e0, " e1 ", e1, " e2 ", e2 )
-            println( " ihalf1 ", ihalf1 )
-            println( " ihalf2 ", ihalf2 )
-            println( " actptsNods[ihalf1] ", actptsNods[ihalf1] )
-            println( " nline1 ", nline1 )
-            println( " nave1  ", nave1 )
-            println( " actptsNods[ihalf2] ", actptsNods[ihalf2] )
-            println( " nline2 ", nline2 )
-            println( " nave2  ", nave2 )
-        end
-
+        # find correct orientation to make sure that nline is aligned with the halfvector of the edge (as projected from the edge)
         if dot( nline1 - dot(nline1,nvec1)*nvec1, actptsNods[ihalf1] ) < 0.
             nline1 = -nline1
         end
         if dot( nline2 - dot(nline2,nvec2)*nvec2, actptsNods[ihalf2] ) < 0.
             nline2 = -nline2
         end
-        if nn == 1
-            println( " nline1 ", nline1 )
-            println( " nline2 ", nline2 )
-        end
 
-        # # ----
-        # # figure out sign from position along edge
-        # if nn == 1
-        #     println("nn ", nn, " e0 ", e0, " e1 ", e1, " e2 ", e2)
-        #     println(" nvec0 ", nvec0)
-        #     println(" nvec1 ", nvec1)
-        #     println(" nvec2 ", nvec2)
-        #     println(" nline1 ", nline1)
-        #     println(" nline2 ", nline2)
-        # end
-        # Δactpt11 = actptsNods[ iactpt1[1] ]# - nodvec
-        # Δactpt12 = actptsNods[ iactpt1[2] ]# - nodvec
-        # Δnproj11 = Δactpt11 / norm(Δactpt11)# - dot(Δactpt11,nprinter) * nprinter
-        # Δnproj12 = Δactpt12 / norm(Δactpt12)# - dot(Δactpt12,nprinter) * nprinter
-        # Δactpt21 = actptsNods[ iactpt2[1] ]# - nodvec
-        # Δactpt22 = actptsNods[ iactpt2[2] ]# - nodvec
-        # Δnproj21 = Δactpt21 / norm(Δactpt21)# - dot(Δactpt21,nprinter) * nprinter
-        # Δnproj22 = Δactpt22 / norm(Δactpt22)# - dot(Δactpt22,nprinter) * nprinter
-        #
-        # dotp1     = dot( cross(Δnproj11,Δnproj12), ncut1 )
-        # dotp1line = dot( cross(Δnproj11,nline1), ncut1 )
-        # if dotp1line * dotp1 < 0.
-        #     nline1 = -nline1
-        # end
-        #
-        # dotp2     = dot( cross(Δnproj21,Δnproj22), ncut2 )
-        # dotp2line = dot( cross(Δnproj21,nline2), ncut2 )
-        # if dotp2line * dotp2 < 0.
-        #     nline2 = -nline2
-        # end
-        # if nn == 1
-        #     println(" dotp1 ", dotp1)
-        #     println(" dotp2 ", dotp2)
-        #     println(" dotp1line ", dotp1line)
-        #     println(" dotp2line ", dotp2line)
-        #     println(" ")
-        # end
-        # #
-        # # println("actptsNods[ iactpt1[1] ] ", actptsNods[ iactpt1[1] ] ," actptsNods[ iactpt1[2] ] ", actptsNods[ iactpt1[2] ] )
-        # # println("Δactpt11 ", Δactpt11 ," Δactpt12 ", Δactpt12 )
-        # # println("Δactptproj11 ", Δactptproj11 ," Δactptproj12 ", Δactptproj12 )
-        # # println("dotp1 ", dotp1 ," dotp1line ", dotp1line )
-        # # println("dotp2 ", dotp2 ," dotp2line ", dotp2line )
-        # # println(" ")
-        # # ----
-
-        # happy days
         rad  = sqrt( lat.ar[ e0 ] / π )
         arg1 = dot(nvec0,nvec1)
         # arg = minimum( ( 1.0, arg) ) # guard for round-off errors
@@ -483,12 +346,6 @@ function writeNodSlice( mesh::MeshF, lat::Lattice, nn::Int64,
         lv2 = rad / tan( θ2/2 ) # offset such that rods do not collide
         ℓ2  = sqrt( lv2^2 + rad^2 ) # absolute distance
 
-        # cent1, = findPlaneLineIntersec( nodvec, Δnodvec, ncut1, nvec0 )
-        # intersec1 = findIntersecEdge( nvec0, nline1, cent1-nodvec, rad, ℓ1) + nodvec
-        #
-        # cent1, = findPlaneLineIntersec( nodvec, Δnodvec, ncut2, nvec0 )
-        # intersec2 = findIntersecEdge( nvec0, nline2, cent1-nodvec, rad, ℓ2) + nodvec
-
         planeoff = dot( nprinter, Δn )
         cent1 = planeoff * cross( ncut1, cross(nprinter, ncut1 ) ) / norm( cross(ncut1, nprinter) )^2 # point of plane-plane intersection
         intersec1 = findIntersecEdge( nvec0, nline1, cent1, rad, ℓ1) + nodvec
@@ -496,22 +353,7 @@ function writeNodSlice( mesh::MeshF, lat::Lattice, nn::Int64,
         cent2 = planeoff * cross( ncut2, cross(nprinter, ncut2 ) ) / norm( cross(ncut2, nprinter) )^2 # point of plane-plane intersection
         intersec2 = findIntersecEdge( nvec0, nline2, cent2, rad, ℓ2) + nodvec
 
-        println( " intersec1 ", intersec1 )
-        println( " intersec2 ", intersec2 )
-        println( " ")
-        # if nn == 1
-        #     println("nn ", nn)
-        #     println("e0 ", e0, " e1 ", e1, " e2 ", e2 )
-        #     println("intersec1 ", intersec1 )
-        #     println("nvec1 ", nvec1 )
-        #     println("line1 ", nline1 )
-        #     println("intersec2 ", intersec2 )
-        #     println("nvec2 ", nvec2 )
-        #     println("line2 ", nline2 )
-        #     println(" ")
-        # end
-
-        # --- save this shit somewhere TODO for more efficient algorithm
+        # --- save this somewhere TODO for more efficient algorithm
 
         # --- write contour
         ledge = norm( mesh.p[nod0,:] - nodvec )
@@ -545,7 +387,6 @@ function writeNodSlice( mesh::MeshF, lat::Lattice, nn::Int64,
                 nzero = cross(nvec0,nperp)
             end
             nzero = nzero/norm(nzero)
-            # println("nzero ", nzero)
 
             intsec0, d0 = findPlaneLineIntersec( zpart, nodvec, nprinter, nvec0 )
 
@@ -573,10 +414,6 @@ function writeNodSlice( mesh::MeshF, lat::Lattice, nn::Int64,
             Δvec = intersec2 - intsec0
             φ2 = atan2( dot(vec2,Δvec)/normvec2^2, dot(vec1,Δvec)/normvec1^2 )
 
-            # println(" vec1 ", vec1 )
-            # println(" vec2 ", vec2 )
-            # println(" φ1 ", φ1, " φ2 ", φ2 )
-
             φmin = min(φ1,φ2)
             φmax = max(φ1,φ2)
             if (φmax - φmin) > π
@@ -584,17 +421,11 @@ function writeNodSlice( mesh::MeshF, lat::Lattice, nn::Int64,
                 φmax = φmin
                 φmin = φ1 - 2*π
             end
-            # println(" φmin ", φmin, " φmax ", φmax )
+
             φ = linspace( φmin, φmax, n+1 )
             for jj in 1:n+1
                 xpts[jj] = intsec0 + vec1 * cos(φ[jj]) + vec2 * sin(φ[jj])
             end
-            # if nn == 1
-            # println("intersec1 ", intersec1)
-            # println("intersec2 ", intersec2)
-            # println("xpts[1] ", xpts[1])
-            # println("xpts[end] ", xpts[end])
-            # end
 
             writeSTLcontour( xpts, intsec0, nprinter, n, fid )
             factot[1] += n
@@ -611,160 +442,7 @@ function writeNodSlice( mesh::MeshF, lat::Lattice, nn::Int64,
 
         end
 
-        # --- old
-        #
-        # ind3 = find( strutact .== el[3] )
-        # if isempty( ind3 )
-        #     ind3 = [isa]
-        #     strutact[isa] = el[3]; isa += 1
-        # end
-        # ind4 = find( strutact .== el[4] )
-        # if isempty( ind4 )
-        #     ind4 = [isa]
-        #     strutact[isa] = el[4]; isa += 1
-        # end
-        #
-        # nod1 = mesh.e[ el[3], 1 ] + mesh.e[ el[3], 2 ] - nn
-        # nod2 = mesh.e[ el[4], 1 ] + mesh.e[ el[4], 2 ] - nn
-        #
-        # nvec1 = SVector{3}( mesh.p[nod1,:] - mesh.p[nn,:]); nvec1 = nvec1/norm(nvec1)
-        # nvec2 = SVector{3}( mesh.p[nod2,:] - mesh.p[nn,:]); nvec2 = nvec2/norm(nvec2)
-        #
-        # ncut = nvec1 - nvec2; ncut = ncut/norm(ncut)
-        # nline = cross(ncut,nprinter)
-        #
-        #
-        #
-        # intersecPts[jj] = intersectemp
-        # println("intersecPts[jj] ", intersecPts[jj] )
-        # println("el[3] ", el[3], " el[4] ", el[4] )
-        # println("nvec1 ", nvec1)
-        # println("nvec2 ", nvec2)
-        # println(" ")
-        #
-        # # println("sintersec[ind3] ", sintersec[ind3], " ind3 ", ind3 )
-        # if sintersec[ind3[]][1] == 0
-        #     sintersec[ind3[]] = SVector{2}( jj, 0 )
-        # else
-        #     sintersec[ind3[]] = SVector{2}( sintersec[ind3[]][1], jj )
-        # end
-        #
-        # # println("sintersec[ind4] ", sintersec[ind4], " ind4 ", ind4 )
-        # if sintersec[ind4[]][1] == 0
-        #     sintersec[ind4[]] = SVector{2}( jj, 0 )
-        # else
-        #     sintersec[ind4[]] = SVector{2}( sintersec[ind4[]][1], jj )
-        # end
-        #
-        # jj += 1
-
     end
-
-    # for jj in 1:nint
-    #
-    #     ee = strutact[jj]
-    #
-    #     println("ee ", ee)
-    #
-    #     ipt1 = sintersec[jj][1]
-    #     ipt2 = sintersec[jj][2]
-    #     println("sintersec[jj] ", sintersec[jj])
-    #
-    #     rad = sqrt( lat.ar[ee] / π )
-    #
-    #     inod1 = mesh.e[ee,1]
-    #     inod2 = mesh.e[ee,2]
-    #     nod1  = SVector{3,Float64}( mesh.p[nn,:] )
-    #     nod2  = SVector{3,Float64}( mesh.p[inod1+inod2-nn,:] )
-    #     ledge = norm( nod2 - nod1 )
-    #     nvec  = SVector{3,Float64}( (nod2 - nod1) ./ ledge )
-    #
-    #     if abs( dot(nvec,nprinter) ) < 1e-10
-    #
-    #         # flat edge
-    #         xptsfl[1] = intersecPts[ipt1]
-    #         xptsfl[2] = intersecPts[ipt1] + nvec * ( 0.5*ledge - dot(intersecPts[ipt1] - Δnodvec,nvec) )
-    #         xptsfl[3] = intersecPts[ipt2] + nvec * ( 0.5*ledge - dot(intersecPts[ipt2] - Δnodvec,nvec) )
-    #         xptsfl[4] = intersecPts[ipt2]
-    #
-    #         writeSTLcontour( xptsfl, Δnodvec, nprinter, 3, fid )
-    #         factot[1] += 3
-    #
-    #     else
-    #
-    #         nperp = cross( nvec, nprinter )
-    #         nperp = nperp ./ norm(nperp)
-    #
-    #         nzero = SVector{3}( nprinter[3], nprinter[1], nprinter[2] )
-    #         if abs( abs(dot(nprinter,nvec)) - 1.) < 1e-10
-    #             nzero = cross(nzero,nprinter)
-    #             nperp = cross(nprinter,nzero)
-    #             nperp = nperp/norm(nperp)
-    #         else
-    #             nzero = cross(nvec,nperp)
-    #             # nzero = SVector{3,Float64}( nullspace( Matrix([nvec nperp]') )[:] )
-    #         end
-    #         nzero = nzero/norm(nzero)
-    #         # println("nzero ", nzero)
-    #
-    #         intsec0, d0 = findPlaneLineIntersec( zpart, nod1, nprinter, nvec )
-    #
-    #         # first line
-    #         currpt = nod1 + nzero*rad
-    #         intsec1, = findPlaneLineIntersec( zpart, currpt, nprinter, nvec )
-    #
-    #         # second line
-    #         currpt = nod1 - nzero*rad
-    #         intsec2, = findPlaneLineIntersec( zpart, currpt, nprinter, nvec )
-    #
-    #         # find angle limits due to intersection
-    #         vec1 = -rad * nperp
-    #         vec2 =  intsec1 - intsec0
-    #
-    #         normvec1 = norm(vec1)
-    #         normvec2 = norm(vec2)
-    #
-    #         Δvec = intersecPts[ipt1] - intsec0
-    #         println("intersecPts[ipt1] ", intersecPts[ipt1])
-    #         println("intersecPts[ipt2] ", intersecPts[ipt2])
-    #         println("intsec0 ", intsec0)
-    #         println("norm(Δvec) ", norm(Δvec))
-    #         println("norm(vec1) ", norm(vec1))
-    #         println("norm(vec2) ", norm(vec2))
-    #         println("rad ", rad)
-    #         # println("Δvec ", Δvec)
-    #         # println("arg 1 ", dot(vec2,Δvec), " arg 2 ", dot(vec1,Δvec) )
-    #         φ1 = atan2( dot(vec2,Δvec)/normvec2^2, dot(vec1,Δvec)/normvec1^2 )
-    #         println("φ1 ", φ1)
-    #
-    #         Δvec = intersecPts[ipt2] - intsec0
-    #         φ2 = atan2( dot(vec2,Δvec)/normvec2^2, dot(vec1,Δvec)/normvec1^2 )
-    #         println("φ2 ", φ2)
-    #
-    #         φ = linspace( min(φ1,φ2), max(φ1,φ2), n+1 )
-    #         for jj in 1:n+1
-    #             xpts[jj] = intsec0 + vec1 * cos(φ[jj]) + vec2 * sin(φ[jj])
-    #         end
-    #
-    #         println("start ", xpts[1] )
-    #         println("end   ", xpts[end] )
-    #
-    #         writeSTLcontour( xpts, intsec0, nprinter, n, fid )
-    #         factot[1] += n
-    #
-    #         # close the contour
-    #         xptscl[1] = xpts[1]
-    #         xptscl[3] = xpts[end]
-    #         xptscl[2] = intsec0
-    #
-    #         if d0 > 0.
-    #             writeSTLcontour( xptscl, Δnodvec, nprinter, 2, fid )
-    #             factot[1] += 2
-    #         end
-    #
-    #     end
-    #
-    # end
 
 end
 
