@@ -61,6 +61,8 @@ function findEdgesInt( mesh::MeshF, lat::Lattice,
             continue
         end
 
+        r = sqrt( lat.ar[ee] / π )
+
         inod1 = mesh.e[ee,1]
         inod2 = mesh.e[ee,2]
         nod1  = SVector{3,Float64}( mesh.p[inod1,:] )
@@ -70,7 +72,7 @@ function findEdgesInt( mesh::MeshF, lat::Lattice,
 
         # check if edge is intersecting or even remotely close to intersecting
         xint, d = findPlaneLineIntersec( zpart, nod1, nprinter, nvec )
-        if d >= -ledge && d <= 2*ledge
+        if d >= -2*r && d <= (ledge+2*r)
             # may be intersecting
             edgesInt[ee] = true
         end
@@ -133,7 +135,7 @@ function writeNodStrutSlice( mesh::MeshF, lat::Lattice,
        end
 
         # compute dist from node -- use pairings from edgesNods
-        distNode = Vector{Float64}( nedg )
+        distNode = fill( 0., nedg )
         radmax = sqrt( maximum(lat.ar[ mesh.n2e[nn] ]) / π )
         for kk in 1:length(edgesNods[nn])
 
