@@ -1,2 +1,2 @@
-# sterno
-Additive Manufacturing Algorithm for lattice structures
+# intrico
+Geometry Generation Algorithm for lattice structures
