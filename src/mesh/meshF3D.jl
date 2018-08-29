@@ -43,11 +43,11 @@ struct MeshF3D <: MeshF
 end
 
 """
-    MeshF3D( mesh::luteos.Mesh3D )
+    MeshF3D( mesh::divido.Mesh3D )
 
 Constructor that generates frame from `mesh`.
 """
-function MeshF( mesh::luteos.Mesh3D )
+function MeshF( mesh::divido.Mesh3D )
 
   e, e2f, f2e  = genEdgesF3D( mesh.f )
 
@@ -66,16 +66,16 @@ Constructor for frame that reads in a mesh from `name`.
 function MeshF3D( name::String )
 
   if name[end-3:end] == ".su2"
-    (p_, t_, bel_, tags_ ) = luteos.readSU2_3D( name )
+    (p_, t_, bel_, tags_ ) = divido.readSU2_3D( name )
   elseif name[end-4:end] == ".mesh" # FEFLOA
-    (p_, t_, bel_, tags_ ) = luteos.readFEFLOA_3D( name )
+    (p_, t_, bel_, tags_ ) = divido.readFEFLOA_3D( name )
   else
     error("Unknown mesh type")
   end
 
-  porder_ = luteos.P1()
+  porder_ = divido.P1()
 
-  (f_, t2f_, nodes_, ploc_, tloc_, trorder_, fb_) = luteos.genmesh3D( porder_, p_, t_, bel_ )
+  (f_, t2f_, nodes_, ploc_, tloc_, trorder_, fb_) = divido.genmesh3D( porder_, p_, t_, bel_ )
 
   n_ = size( p_, 1 )
 

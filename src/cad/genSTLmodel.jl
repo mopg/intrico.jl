@@ -1,4 +1,4 @@
-function genSTLmodel( mesh::Union{luteos.Mesh3D,MeshF3D}, flnameBase::String )
+function genSTLmodel( mesh::Union{divido.Mesh3D,MeshF3D}, flnameBase::String )
 
     if length(flnameBase) > 4 && flnameBase[end-3:end] == ".stl"
         flnameBase = flnameBase[1:end-4]

@@ -39,11 +39,11 @@ struct MeshF2D <: MeshF
 end
 
 """
-    MeshF( mesh::luteos.Mesh2D )
+    MeshF( mesh::divido.Mesh2D )
 
-Constructor that generates frame from `luteos` mesh structure in `mesh`.
+Constructor that generates frame from `divido` mesh structure in `mesh`.
 """
-function MeshF( mesh::luteos.Mesh2D )
+function MeshF( mesh::divido.Mesh2D )
 
     n2e = genNEconnec2D( mesh.f, mesh.n )
 
@@ -59,18 +59,18 @@ Constructor for frame from mesh written in `name`.
 function MeshF2D( name::String )
 
     if name[end-3:end] == ".su2"
-        (p_, t_, bel_, tags_) = luteos.readSU2_2D( name )
+        (p_, t_, bel_, tags_) = divido.readSU2_2D( name )
     elseif name[end-3:end] == ".msh" # BAMG
-        (p_, t_, bel_, tags_ ) = luteos.readBAMG( name )
+        (p_, t_, bel_, tags_ ) = divido.readBAMG( name )
     elseif name[end-4:end] == ".mesh" # FEFLOA
-        (p_, t_, bel_, tags_ ) = luteos.readFEFLOA_2D( name )
+        (p_, t_, bel_, tags_ ) = divido.readFEFLOA_2D( name )
     else
         error("MeshF2D: Unknown mesh type")
     end
 
-    porder_ = luteos.P1()
+    porder_ = divido.P1()
 
-    (f_, t2f_, nodes_, ploc_, tloc_, fb_) = luteos.genmesh( porder_, p_, t_, bel_ )
+    (f_, t2f_, nodes_, ploc_, tloc_, fb_) = divido.genmesh( porder_, p_, t_, bel_ )
 
     n_ = size( p_, 1 )
 
