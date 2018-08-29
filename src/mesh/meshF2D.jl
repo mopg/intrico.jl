@@ -81,7 +81,7 @@ function MeshF2D( name::String )
 end
 
 """
-    genNEconnec3D( e::Matrix{Int64}, n::Int64 )
+    genNEconnec2D( e::Matrix{Int64}, n::Int64 )
 
 Generates node to edge connectivity given edge connectivity (`e`).
 """
@@ -101,6 +101,10 @@ function genNEconnec2D( e::Matrix{Int64}, n::Int64 )
             append!(n2e[ii2], jj)
         end
 
+    end
+
+    for kk in 1:n
+        n2e[kk] = sort( n2e[kk] )
     end
 
     return n2e

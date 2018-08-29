@@ -1,4 +1,4 @@
-function genSTLmodel( mesh::MeshF3D, flnameBase::String )
+function genSTLmodel( mesh::Union{luteos.Mesh3D,MeshF3D}, flnameBase::String )
 
     if length(flnameBase) > 4 && flnameBase[end-3:end] == ".stl"
         flnameBase = flnameBase[1:end-4]
@@ -11,7 +11,7 @@ function genSTLmodel( mesh::MeshF3D, flnameBase::String )
         nface = count( mesh.fb[:,2] == bb )
 
         # open STL file
-        fid = open( string(flnameBase, "_", meshf.boundtags[bb], ".stl" ), "w" )
+        fid = open( string(flnameBase, "_", mesh.boundtags[bb], ".stl" ), "w" )
 
         # write header
         for jj in 1:80

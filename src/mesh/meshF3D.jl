@@ -209,6 +209,10 @@ function genNEconnec3D( e::Matrix{Int64}, n::Int64 )
 
     end
 
+    for kk in 1:n
+        n2e[kk] = sort( n2e[kk] )
+    end
+
     return n2e
 
 end
