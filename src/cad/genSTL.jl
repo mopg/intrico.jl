@@ -11,207 +11,99 @@
 #
 # ---------------------------------------------------------------------------- #
 
-import QHull
+"""
+    genSTL( mesh::MeshF,  lat::Lattice, flname::String; n = 8, name = "object" )
+
+Generates a binary .stl file for the lattice in `mesh` with the areas defined in `lat`.
+"""
+function genSTLnew( mesh::MeshF,  lat::Lattice, flname::String; n::Int64 = 8, boundflat = Vector{Int64}( 0 ) )
+
+    edgWrite = Vector{Vector{Bool}}( size(mesh.e,1) )
+    for jj in 1:size(mesh.e,1)
+        edgWrite[jj] = [true]
+    end
+
+    # open STL file
+    fid = open( flname, "w" )
+
+    # write header
+    for jj in 1:80
+        write(fid,' ')
+    end
+    write(fid,UInt32(0)) # number of faces is unknown now, so write 0
+
+    # generate all faces (and write)
+    factot = [ 0 ]
+    actptsNods, edgesNods = genFacesNodsCyl( mesh, lat, n, factot, fid, edgWrite, boundflat )
+
+    # close STL
+    close( fid )
+
+    ## reopen to write the number of faces
+    fid = open( flname, "a+" )
+    seekstart(fid) # go back to top of file
+
+    # rewrite header
+    for jj in 1:80
+        write(fid,' ')
+    end
+    # write correct number of faces
+    write( fid, UInt32( factot[1] ) )
+    # close STL
+    close( fid )
+
+    return actptsNods, edgesNods
+end
 
 """
     genSTL( mesh::MeshF,  lat::Lattice, flname::String; n = 8, name = "object" )
 
 Generates a binary .stl file for the lattice in `mesh` with the areas defined in `lat`.
 """
-function genSTL( mesh::MeshF,  lat::Lattice, flname::String; n = 8, name = "object" )
-
-    # compute correct distance from node
-    fdist = compDist( mesh, lat )
-    fdist .*= 0.0
+function genSTLnew( mesh::MeshF,  lat::Lattice, flnames::Vector{String},
+                    edgWrite::Vector{Vector{Bool}}; n::Int64 = 8, boundflat = Vector{Int64}( 0 ) )
 
     # open STL file
-    fid = open( flname, "w" )
+    fid = Vector{IOStream}( length(flnames) )
+    for ii in 1:length(flnames)
 
-    # generate vertices for nodes
-    #   need to do that here because we need to know how many faces we have
-    factot, nface = genFacesNods( mesh, lat, fdist, n, fid )
+        fid[ii] = open( flnames[ii], "w" )
 
-    nnzcyl = length( find(sqrt.( lat.ar / π ) .> 1e-14) ) # number of cylinders with nonzero radius
-    nface = nnzcyl * (n-1) * 2
+        # write header
+        for jj in 1:80
+            write(fid[ii],' ')
+        end
+        write(fid[ii],UInt32(0)) # number of faces is unknown now, so write 0
 
-    # write header
-    for jj in 1:80
-        write(fid,' ')
     end
-    write(fid,UInt32(nface))
 
-    # generate STL for cylinders
-    writefc = genSTLcyls( mesh, lat, fdist, n, fid, Val{2} )
-
-    # write STL for nodes
-    # writefn = genSTLBnods( factot, fid )
+    # generate all faces (and write)
+    factot = fill( 0, length(flnames) )
+    actptsNods, edgesNods = genFacesNodsCyl( mesh, lat, n, factot, fid, edgWrite, boundflat )
 
     # close STL
-    close( fid )
+    for ii in 1:length(flnames)
+        close( fid[ii] )
+    end
 
-end
+    ## reopen to write the number of faces
+    for ii in 1:length(flnames)
 
-"""
-    genSTLA( mesh::MeshF,  lat::Lattice, flname::String; n = 8, name = "object" )
+        fid = open( flnames[ii], "a+" )
+        seekstart(fid) # go back to top of file
 
-Generates an ASCII .stl file for the lattice in `mesh` with the areas defined in `lat`.
-"""
-function genSTLA( mesh::MeshF,  lat::Lattice, flname::String; n = 8, name = "object" )
-
-    # 1. compute correct distance from node
-    fdist = compDist( mesh, lat )
-
-    # open STL file
-    fid = open( flname, "w" )
-    @printf( fid, "solid %s\n", name )
-
-    # generate STL for cylinders
-    genSTLcyls( mesh, lat, fdist, n, fid, Val{1} )
-
-    # generate STL for nodes
-    genSTLAnods( mesh, lat, fdist, n, fid )
-
-    # close STL
-    @printf( fid, "endsolid %s\n", name )
-    close( fid )
-
-end
-
-"""
-    compDist( mesh::MeshF,  lat::Lattice )
-
-Computes the distance from the end face to the node
-"""
-function compDist( mesh::MeshF,  lat::Lattice )
-
-    fdist = fill( 0.0, size(mesh.e,1), 2 )
-
-    for kk in 1:mesh.n
-        # loop over nodes
-
-        # generate pairs of edges
-        edg   = [i for i in 1:length(mesh.n2e[kk])]
-        #   check for min area
-        inddel = Vector{Int64}(0)
-        for ii in 1:length(mesh.n2e[kk])
-            if lat.ar[ mesh.n2e[kk][ii] ] < 0.0 || sqrt( lat.ar[ mesh.n2e[kk][ii] ] / π ) < 1.e-14
-                append!(inddel,ii)
-            end
+        # rewrite header
+        for jj in 1:80
+            write(fid,' ')
         end
-        edg0  = copy(edg)
-        deleteat!(edg0,inddel)
-        edg1  = edg0'
-        eedg  =   edg0 .+ 0*edg1
-        eedg1 = 0*edg0 .+   edg1
-        pairs = hcat( eedg[:], eedg1[:] )
-
-        upairs = unique(sort(pairs,2), 1) # unique pairs
-
-        # compute required distance
-        mindist = fill( 0.0, length(edg), length(edg)-1)
-        indcnt = fill( 1, length(edg) )
-        for jj in 1:size(upairs,1)
-            edg_i1 = upairs[jj,1]
-            edg_i2 = upairs[jj,2]
-            if edg_i1 == edg_i2
-                continue
-            end
-            e1 = mesh.n2e[kk][ edg[ edg_i1 ] ]
-            e2 = mesh.n2e[kk][ edg[ edg_i2 ] ]
-
-            # get different radii
-            r1 = sqrt(lat.ar[ e1 ]/π)
-            r2 = sqrt(lat.ar[ e2 ]/π)
-
-            # compute angle between the edges
-            nod1 = mesh.e[e1, find( mesh.e[e1,:] .!= kk )[] ]
-            nod2 = mesh.e[e2, find( mesh.e[e2,:] .!= kk )[] ]
-            vec1 = mesh.p[ nod1, : ] - mesh.p[ kk, : ]
-            vec2 = mesh.p[ nod2, : ] - mesh.p[ kk, : ]
-            arg = dot(vec1,vec2) / ( norm(vec1) * norm(vec2) )
-            arg = minimum( ( 1.0, arg) ) # guard for round-off errors
-            arg = maximum( (-1.0, arg) ) # guard for round-off errors
-            θ = acos( arg )
-
-            # compute min distance
-            l2 = ( r1 + cos(θ)*r2 ) / sin(θ)
-            l1 = sin(θ) * r2 + l2 * cos(θ)
-            if θ > π - 1.e-6
-                l1 = 0.0
-                l2 = 0.0
-            end
-
-            mindist[ edg_i1, indcnt[edg_i1] ] = 1.001 * l1 # add 0.1% buffer
-            mindist[ edg_i2, indcnt[edg_i2] ] = 1.001 * l2 # add 0.1% buffer
-            indcnt[edg_i1] += 1
-            indcnt[edg_i2] += 1
-
-        end
-
-        # save maximum distance
-        for jj in 1:length(edg)
-            e1 = mesh.n2e[kk][ edg[ jj ] ]
-            ind1 = find( mesh.e[e1,:] .== kk )[]
-            maxdist = maximum( mindist[jj,:] )
-            if maxdist < 1e-14
-                # if two edges are exactly coplanar, maxdist will be zero.
-                # In that case, the convex hull computation will fail because both faces are the same
-                maxdist = 0.01*maximum( sqrt.(abs.(lat.ar[ mesh.n2e[kk] ])/π) )
-            end
-            fdist[e1,ind1] = maxdist
-        end
+        # write correct number of faces
+        write( fid,UInt32( factot[ii] ) )
+        # close STL
+        close( fid )
 
     end
 
-    return fdist
-
-end
-
-"""
-    genSTLcyls( mesh::MeshF,  lat::Lattice, fdist::Matrix{Float64}, n::Int64, fid::IOStream )
-
-Writes the STL facets for all cylinders.
-"""
-function genSTLcyls( mesh::MeshF,  lat::Lattice, fdist::Matrix{Float64}, n::Int64, fid::IOStream, stltype::DataType )
-
-    θ = linspace( 0, 2*π, n )
-
-    for ee in 1:size( mesh.e, 1 )
-
-        if lat.ar[ee] < 0.0 || sqrt( lat.ar[ee] / π ) < 1e-14
-            continue
-        end
-
-        nod1 = mesh.e[ee,1]
-        nod2 = mesh.e[ee,2]
-
-        vec = mesh.p[nod2,:] - mesh.p[nod1,:]
-
-        l = norm( vec )
-
-        # begin and start nodes of cylinder
-        x1 = mesh.p[ nod1, : ] + fdist[ee,1] / l * vec
-        x2 = mesh.p[ nod2, : ] - fdist[ee,2] / l * vec
-
-        # generate points on end-faces
-        r = sqrt( lat.ar[ee] / π )
-        xx = r * cos.( θ )
-        yy = r * sin.( θ )
-
-        nvec = vec / l
-
-        xx, yy, zz = rotTransCirc( xx, yy, nvec )
-        #   translate from origin to end points
-        xx1 = xx + x1[1]
-        yy1 = yy + x1[2]
-        zz1 = zz + x1[3]
-        xx2 = xx + x2[1]
-        yy2 = yy + x2[2]
-        zz2 = zz + x2[3]
-
-        writeSTLcyl( stltype, xx1, yy1, zz1, xx2, yy2, zz2, fid )
-
-    end
+    return actptsNods, edgesNods
 
 end
 
@@ -220,351 +112,647 @@ end
 
 Writes the STL facets for all nodes for ASCII files.
 """
-function genFacesNods( mesh::MeshF, lat::Lattice, fdist::Matrix{Float64}, n::Int64, fid::IOStream )
+function genFacesNodsCyl( mesh::MeshF, lat::Lattice, n::Int64, nfac::Vector{Int64},
+                          fid::Union{IOStream,Vector{IOStream}},
+                          edgWrite::Vector{Vector{Bool}}, boundflat::Vector{Int64} )
 
-    θ = linspace( 0, 2*π, n ).^1.0
+    # setup points to cylinder connectivity
+    ptsCylEdge = Vector{Vector{Vector{SVector{3,Float64}}}}( size(mesh.e,1) )
+    for kk in 1:size(mesh.e,1)
+        ptsCylEdge[kk] = Vector{Vector{SVector{3,Float64}}}(2)
+    end
 
-    factot = Vector{Vector{Matrix{Float64}}}( mesh.n )
-    nfac = 0
+    # setup distance vector
+    fdist = Vector{Vector{Float64}}( size(mesh.e,1) )
+    for jj in 1:size(mesh.e,1)
+        fdist[jj] = fill( 0.0, 2 )
+    end
 
+    # get flat vector, if exists
+    nvecflat = Vector{SVector{3,Float64}}( length(boundflat) )
+    for jj in 1:length(boundflat)
+        indf = find(mesh.f[:,5] .== -boundflat[jj])[1]
+        vec1 = SVector{3,Float64}( mesh.p[ mesh.f[indf,2],: ] - mesh.p[ mesh.f[indf,1],: ] )
+        vec2 = SVector{3,Float64}( mesh.p[ mesh.f[indf,3],: ] - mesh.p[ mesh.f[indf,1],: ] )
+        nvecflat[jj] = cross(vec1,vec2) / norm( cross(vec1,vec2) )
+    end
+
+    # generate nodes
+    actptsNods = Vector{Vector{SVector{3,Float64}}}( mesh.n )
+    edgesNods  = Vector{Vector{SVector{5,Int64}}}( mesh.n )
     for nn in 1:mesh.n
 
-        edges = copy(mesh.n2e[nn])
-        inddel = Vector{Int64}(0)
-        for ii in 1:length(edges)
-            if lat.ar[ edges[ii] ] < 0.0 || sqrt( lat.ar[ edges[ii] ] / π ) < 1e-14
-                append!(inddel,ii)
-            end
-        end
-        deleteat!(edges,inddel)
-
-        (verts,nvecs) = compNodSingle( mesh, lat, edges, fdist, nn, n, θ )
-
-        if length(edges) > 1
-            # compute convex hull
-            ch = try
-                QHull.chull( verts )
-            catch y
-                println( "output ", y )
-                println( "node ", nn )
-                println( "edges ", edges )
-                println( "distances ", fdist[edges] )
-                error("Problems!!")
-            end
-
-            faces = ch.simplices
-
-            centroid = mean( verts, 1 )[:] # need to compute centroid to determine whether or not normal is correct
-
-            ifaces = cleanupCHull( faces, verts, nvecs, centroid )
-
-            # save face vertices
-            factot[nn] = Vector{Matrix{Float64}}( length(ifaces) )
-            kk = 1
-            for ff in ifaces
-                factot[nn][kk] = verts[ faces[ff],: ]
-                kk   += 1
-                nfac += 1
-            end
-
-        end
+        genFacesNod( nn, mesh, lat, n, ptsCylEdge, nfac, fid,
+                     edgWrite, fdist, boundflat, nvecflat, actptsNods, edgesNods )
 
     end
 
-    return (factot, nfac)
+    # Collision warnings
+    collisionWarning( mesh, fdist )
+
+    # generate cylinders
+    for kk in 1:size(mesh.e,1)
+        if lat.ar[ kk ] > 0.0 && sqrt( lat.ar[ kk ] / π ) > 1.e-14
+            genFacesCyl( kk, mesh, ptsCylEdge[kk], nfac, fid, edgWrite[kk] )
+        end
+    end
+
+    return actptsNods, edgesNods
 
 end
 
 """
-    genSTLBnods( factot::Vector{Vector{Matrix{Float64}}}, fid::IOStream )
+    compDist( mesh::MeshF,  lat::Lattice )
 
-Writes the STL facets for all nodes for binary files.
+Computes the distance from the end face to the node
 """
-function genSTLBnods( factot::Vector{Vector{Matrix{Float64}}}, fid::IOStream )
+function genFacesNod( kk::Int64, mesh::MeshF,  lat::Lattice, nn::Int64,
+                      ptsCylEdge::Vector{Vector{Vector{SVector{3,Float64}}}},
+                      nfac::Vector{Int64},
+                      fid::Union{IOStream,Vector{IOStream}},
+                      edgWrite::Vector{Vector{Bool}},
+                      fdist::Vector{Vector{Float64}},
+                      boundflat::Vector{Int64}, nvecflat::Vector{SVector{3,Float64}},
+                      actptsNods::Vector{Vector{SVector{3,Float64}}},
+                      edgesNods::Vector{Vector{SVector{5,Int64}}} )
 
-    for f1 in factot, verts in f1
-        writeFacetSTLB( verts, fid::IOStream )
+    # current coordinate
+    pcurr = SVector{3}( mesh.p[kk,:] )
+
+    # initialize connectivity information
+    actptsNods[kk] = Vector{SVector{3,Float64}}( 0 )
+    edgesNods[kk]  = Vector{SVector{5,Int64}}( 0 )
+
+    # generate pairs of edges
+    edg   = [i for i in 1:length(mesh.n2e[kk])]
+    #   check for min area
+    inddel = Vector{Int64}(0)
+    for ii in 1:length(mesh.n2e[kk])
+        if lat.ar[ mesh.n2e[kk][ii] ] < 0.0 || sqrt( lat.ar[ mesh.n2e[kk][ii] ] / π ) < 1.e-14
+            append!(inddel,ii)
+        end
+    end
+    edg0     = [i for i in 1:length(edg)-length(inddel)]
+    indedges = [jj for jj in 1:length(edg)]
+    deleteat!(indedges,inddel)
+
+    if length(edg0) == 0 # if all nodes are zero thickness, can skip the whole function
+        return nothing
     end
 
-end
+    edg1  =   edg0'
+    eedg  =   edg0 .+ 0*edg1
+    eedg1 = 0*edg0 .+   edg1
+    pairs = hcat( eedg[:], eedg1[:] )
 
+    pairs = unique(sort(pairs,2), 1) # unique pairs
+    pairs = pairs[ sortperm( pairs[:,1] + pairs[:,2]*100 ), : ] # ensure highest indices are last
+    # TODO: don't need to do this for each loop, can just precompute this for n = 40 and then just take part of the unique pairs
+    rmax = sqrt( maximum( lat.ar[ mesh.n2e[kk] ] ) / π )
 
-"""
-    genSTLAnods( mesh::MeshF, lat::Lattice, fdist::Matrix{Float64}, n::Int64, fid::IOStream )
-
-Writes the STL facets for all nodes for ASCII files.
-"""
-function genSTLAnods( mesh::MeshF, lat::Lattice, fdist::Matrix{Float64}, n::Int64, fid::IOStream )
-
-    θ = linspace( 0, 2*π, n ).^1.0
-
-    for nn in 1:mesh.n
-
-        edges = copy(mesh.n2e[nn])
-        inddel = Vector{Int64}(0)
-        for ii in 1:length(edges)
-            if lat.ar[ edges[ii] ] < 0.0 || sqrt( lat.ar[ edges[ii] ] / π ) < 1e-14
-                append!(inddel,ii)
-            end
+    # compute crossing point and normal vector
+    normvec  = Vector{Vector{SVector{3,Float64}}}( length(edg) )
+    eveclink = Vector{Vector{Int64}}( length(edg) )
+    # tangvec  = Vector{Vector{Vector{Float64}}}( length(edg) )
+    lvmax = fill( 0.0, length(edg) )
+    for jj in 1:length(edg)
+        normvec[jj]  = Vector{SVector{3,Float64}}( length(edg0)-1 )
+        eveclink[jj] = Vector{Int64}( length(edg0)-1 )
+        # tangvec[jj]  = Vector{Vector{Float64}}( length(edg)-1 )
+    end
+    indcnt = fill(1, length(edg) )
+    for jj in 1:size(pairs,1)
+        edg_i1 = indedges[ pairs[jj,1] ]
+        edg_i2 = indedges[ pairs[jj,2] ]
+        if edg_i1 == edg_i2
+            continue
         end
-        deleteat!(edges,inddel)
+        e1 = mesh.n2e[kk][ edg[ edg_i1 ] ]
+        e2 = mesh.n2e[kk][ edg[ edg_i2 ] ]
 
-        (verts,nvecs) = compNodSingle( mesh, lat, edges, fdist, nn, n, θ )
+        # compute angle between the edges
+        nod1 = mesh.e[e1, find( mesh.e[e1,:] .!= kk )[] ]
+        nod2 = mesh.e[e2, find( mesh.e[e2,:] .!= kk )[] ]
+        vec1 = mesh.p[ nod1, : ] - mesh.p[ kk, : ]
+        vec2 = mesh.p[ nod2, : ] - mesh.p[ kk, : ]
+        vec1 ./= norm(vec1)
+        vec2 ./= norm(vec2)
+        arg = dot(vec1,vec2)
+        arg = minimum( ( 1.0, arg) ) # guard for round-off errors
+        arg = maximum( (-1.0, arg) ) # guard for round-off errors
+        θ = acos( arg )
 
-        if length(edges) > 1
-            # compute convex hull
-            ch = QHull.chull( verts )
-            faces = ch.simplices
+        # compute absolute distance between node center and intersection
+        lv = rmax / tan( θ/2 ) # offset such that rods do not collide
+        l = sqrt( lv^2 + rmax^2 ) # absolute distance
+        lvmax[edg_i1] = max( lvmax[edg_i1], lv )
+        lvmax[edg_i2] = max( lvmax[edg_i2], lv )
 
-            centroid = mean( verts, 1 )[:] # need to compute centroid to determine whether or not normal is correct
+        magdiff = norm(vec1 - vec2)
+        magave  = norm(vec1 + vec2)
 
-            ifaces = cleanupCHull( faces, verts, nvecs, centroid )
+        # normal vectors
+        normvec[edg_i1][ indcnt[edg_i1] ] = SVector{3}( (vec1-vec2) / magdiff )
+        normvec[edg_i2][ indcnt[edg_i2] ] = SVector{3}( (vec2-vec1) / magdiff )
 
-            # write STLs
-            for ff in ifaces
-                writeFacetSTLA( verts[ faces[ff],: ], fid::IOStream )
-            end
+        # add edge links
+        eveclink[edg_i1][ indcnt[edg_i1] ] = e2
+        eveclink[edg_i2][ indcnt[edg_i2] ] = e1
 
-        end
+        indcnt[edg_i1] += 1
+        indcnt[edg_i2] += 1
 
     end
 
-end
+    # add offset to rods
+    for ii in 1:length(lvmax)
+        lengthedge = norm( mesh.p[ mesh.e[mesh.n2e[kk][edg[ii]],1],: ] - mesh.p[ mesh.e[mesh.n2e[kk][edg[ii]],2],: ] )
+        if lvmax[ii] < 0.30 * lengthedge # 0.15
+            lvmax[ii] += 0.10 * lengthedge # 0.05
+        end
 
-function compNodSingle( mesh::MeshF, lat::Lattice, edges::Vector{Int64},
-                        fdist::Matrix{Float64}, nn::Int64, n::Int64, θ::Vector{Float64} )
+        # add to global distance vector
+        ie = find( mesh.e[ mesh.n2e[kk][ edg[ii] ], 1:2] .!= kk )[]
+        fdist[ mesh.n2e[kk][ edg[ii] ] ][ ie ] = lvmax[ii]
+    end
 
-    # find vertices for convex hull
-    verts = Matrix{Float64}( length(edges)*n, 3 )
-    nvecs = Vector{Vector{Float64}}( length(edges) )
-    cnt = 1
-    cntnv = 1
+    # check if on boundary that has to be flat
+    notflat = true
+    nflat = 0
+    for eecnt in 1:length(edg0)
+        ee = indedges[ eecnt ]
+        e1 = mesh.n2e[kk][ edg[ ee ] ]
+        if any(mesh.e[ e1, 3 ] .== boundflat) || any(mesh.e[ e1, 4 ] .== boundflat)
+            # TEMP for now assume we only case about one flat surface
+            # append!( normvec[ee], nvecflat[1:1] )
+            notflat = false
+            nflat   = 2
+        end
+    end
 
-    for ee in edges
+    # loop over each edge
+    for eecnt in 1:length(edg0)
+        ee = indedges[ eecnt ]
 
-        inod = find(mesh.e[ee,:] .== nn )[]
+        e1     = mesh.n2e[kk][ edg[ ee ] ]
+        nod    = mesh.e[e1, find( mesh.e[e1,:] .!= kk )[] ]
+        evec   = mesh.p[ nod, : ] - mesh.p[ kk, : ]
+        evec ./= norm(evec)
 
-        nod1 = mesh.e[ee,1]
-        nod2 = mesh.e[ee,2]
+        nnormals = length(normvec[ee]) # or should this be eecnt?
 
-        vec = mesh.p[nod2,:] - mesh.p[nod1,:]
+        # find intersections between planes and check if they are active
+        testpt   = mesh.p[ nod, : ] - mesh.p[ kk, : ] # distance to this point is measured to determine which is closer, distance is relative to current node
+        nunique  = uniqueNumPairs( nnormals )
+        intersec = Vector{SVector{3,Float64}}( max( 2*(nunique - nnormals) + 1 + nflat, 3 ) )
+        # edge_pairs = Vector{SVector{2,Int64}}( max( 2*(nunique - nnormals) + 1 + nflat, 3 ) )
 
-        l = norm( vec )
+        nact = 0
+        if nunique == 1 # if nunique is 1, there are no intersections
 
-        # begin and start nodes of cylinder
-        xface = mesh.p[ nn, : ]
-        if inod == 1
-            xface += fdist[ee,1] / l * vec
+            indother    = find( indedges .!= ee )[]
+            eother      = mesh.n2e[kk][ edg[ indedges[ indother ] ] ]
+            nodother    = mesh.e[eother, find( mesh.e[eother,:] .!= kk )[] ]
+            evecother   = SVector{3}( (mesh.p[ nodother, : ] - mesh.p[ kk, : ]) / norm(mesh.p[ nodother, : ] - mesh.p[ kk, : ]) )
+
+            lvec = evec + evecother
+            if norm(lvec) < 1e-14
+                lvec = normvec[ee][1]
+            end
+
+            lvec2 = lvec * rmax / norm( lvec - dot( lvec, evec )*evec )
+
+            nact += 1
+            intersec[nact] = SVector{3}( 1.0 * lvec2)
+            # edge_pairs[nact] = SVector{2}( sort(mesh.n2e[kk][ edg[ indedges ] ]) )
+
+            nact += 1
+            intersec[nact] = SVector{3}(-1.0 * lvec2)
+            # edge_pairs[nact] = SVector{2}( sort(mesh.n2e[kk][ edg[ indedges ] ]) )
+
         else
-            xface -= fdist[ee,2] / l * vec
+            for jj in 1:nunique # note: number of planes is length(edg)-1, so can reuse part of upairs
+
+                # TODO: need to check here for alignment with normal plane, because now that is possible
+                # it is needed, because point won't return active (or divide by zero), actually it probably will?
+                # no doesn't work, becuase will never be active
+
+                if pairs[jj,1] == pairs[jj,2]
+                    continue
+                end
+                ip1 = pairs[jj,1]
+                ip2 = pairs[jj,2]
+
+                lvec     = cross( normvec[ee][ ip1 ], normvec[ee][ ip2 ] ) # always going through the node center (because both planes go through that point)
+                nrmperp  = norm( lvec - dot( lvec, evec )*evec )
+
+                # if norm( cross( normvec[ee][ ip2 ], evec ) ) < 1e-14 # problematic edge is added last, so will always be in the second column (ip2)
+                #     # normal plane splits edge down the middle, need to take extra care
+                #     lvec1 = lvec * rmax / nrmperp
+                #
+                #     lvec2 = - lvec * rmax / nrmperp
+                #
+                # else
+
+                # check first point
+                lvec1 = lvec * rmax / nrmperp
+
+                act = checkPointAct( lvec1, testpt, normvec[ee], evec )
+
+                if act && ( notflat || dot( lvec1, nvecflat[1] ) <= 1e-14 )
+                    nact += 1
+                    intersec[nact] = lvec1
+                end
+
+                # check second point
+                lvec2 = - lvec * rmax / nrmperp
+                # check ...
+                act = checkPointAct( lvec2, testpt, normvec[ee], evec )
+                if act && ( notflat || dot( lvec2, nvecflat[1] ) <= 1e-14 ) # last statement only evaluated if flat
+                    nact += 1
+                    intersec[nact] = lvec2
+                end
+
+                # end
+
+            end
         end
 
-        # generate points on end-faces
-        r = sqrt( lat.ar[ee] / π )
-        xx = r * cos.( θ )
-        yy = r * sin.( θ )
+        ## check for flatspots
+        flatact  = fill( false, nact )
+        if !notflat
+            for jj in 1:length(normvec[ee])
+                lvec     = cross( normvec[ee][ jj ], nvecflat[1] ) # always going through the node center (because both planes go through that point)
+                nrmperp  = norm( lvec - dot( lvec, evec )*evec )
 
-        nvec = vec / l
+                # check first point
+                lvec1 = lvec * rmax / nrmperp
 
-        xx, yy, zz = rotTransCirc( xx, yy, nvec )
-        #   translate from origin to end points
-        xx += xface[1]
-        yy += xface[2]
-        zz += xface[3]
+                act = checkPointAct( lvec1, testpt, normvec[ee], evec )
 
-        verts[cnt:(cnt+n-1),1] = xx
-        verts[cnt:(cnt+n-1),2] = yy
-        verts[cnt:(cnt+n-1),3] = zz
+                if act
+                    nact += 1
+                    intersec[nact] = lvec1
+                    append!(flatact, true)
+                end
 
-        cnt += n
+                # check second point
+                lvec2 = - lvec * rmax / nrmperp
+                # check ...
+                act = checkPointAct( lvec2, testpt, normvec[ee], evec )
+                if act # last statement only evaluated if flat
+                    nact += 1
+                    intersec[nact] = lvec2
+                    append!(flatact, true)
+                end
 
-        nvecs[cntnv] = nvec
-        if inod == 2
-            nvecs[cntnv] = -nvec
-        end
-        cntnv += 1
-
-    end
-
-    # is this a sharp node?
-    sharp = true
-    nvecsum = [0.0,0.0,0.0]
-    for el in 1:length(edges)
-        nvecsum += nvecs[el]
-    end
-    for el in 1:length(edges)
-        dotp = dot( nvecsum, nvecs[el] )
-        if dotp <= 0.0
-            sharp = false
-            break
-        end
-    end
-    if all(abs.(nvecsum) .< 1e-14)
-        sharp = false
-    end
-
-    if sharp
-        # NOTE: NOT SURE IF THIS WILL AT SOME POINT COLLIDE WITH REST OF VERTICES
-        ρ = 0.5 # factor of radius
-        nnvecsum = nvecsum/norm(nvecsum)
-
-        rmax = sqrt( maximum( lat.ar[edges] ) / π )
-        r = ρ * rmax
-        xx = r * cos.( θ )
-        yy = r * sin.( θ )
-
-        xx, yy, zz = rotTransCirc( xx, yy, -nnvecsum )
-        #   translate from origin to end points
-        offset = sqrt( rmax^2 - r^2 )
-        xface = mesh.p[ nn, : ] - offset * nnvecsum
-        xx += xface[1]
-        yy += xface[2]
-        zz += xface[3]
-
-        verts = [verts; hcat(xx, yy, zz)]
-    end
-
-    return (verts,nvecs)
-
-end
-
-"""
-    writeSTLcyl( xx1::Vector{Float64}, yy1::Vector{Float64}, zz1::Vector{Float64},
-                 xx2::Vector{Float64}, yy2::Vector{Float64}, zz2::Vector{Float64},
-                 fid::IOStream )
-
-Writes the STL facets for one cylinder for an ASCII STL file.
-"""
-function writeSTLcyl( ::Type{Val{1}}, xx1::Vector{Float64}, yy1::Vector{Float64}, zz1::Vector{Float64},
-                                      xx2::Vector{Float64}, yy2::Vector{Float64}, zz2::Vector{Float64},
-                                      fid::IOStream )
-
-    for kk in 1:size(xx1,1)-1
-
-        # write facet 1
-        vert = [ xx1[kk]   yy1[kk]   zz1[kk];
-                 xx2[kk+1] yy2[kk+1] zz2[kk+1];
-                 xx2[kk]   yy2[kk]   zz2[kk]]
-        writeFacetSTLA( vert, fid )
-
-        # write facet 2
-        vert = [ xx1[kk+1]  yy1[kk+1] zz1[kk+1];
-                  xx2[kk+1] yy2[kk+1] zz2[kk+1];
-                  xx1[kk]   yy1[kk]   zz1[kk] ]
-        writeFacetSTLA( vert, fid )
-
-    end
-
-end
-
-"""
-    writeSTLcyl( xx1::Vector{Float64}, yy1::Vector{Float64}, zz1::Vector{Float64},
-                 xx2::Vector{Float64}, yy2::Vector{Float64}, zz2::Vector{Float64},
-                 fid::IOStream )
-
-Writes the STL facets for one cylinder for a binary STL file.
-"""
-function writeSTLcyl( ::Type{Val{2}}, xx1::Vector{Float64}, yy1::Vector{Float64}, zz1::Vector{Float64},
-                                      xx2::Vector{Float64}, yy2::Vector{Float64}, zz2::Vector{Float64},
-                                      fid::IOStream )
-
-    for kk in 1:size(xx1,1) - 1
-
-        # write facet 1
-        vert = [ xx1[kk]   yy1[kk]   zz1[kk];
-                 xx2[kk+1] yy2[kk+1] zz2[kk+1];
-                 xx2[kk]   yy2[kk]   zz2[kk]]
-        writeFacetSTLB( vert, fid )
-
-        # write facet 2
-        vert = [ xx1[kk+1]  yy1[kk+1] zz1[kk+1];
-                  xx2[kk+1] yy2[kk+1] zz2[kk+1];
-                  xx1[kk]   yy1[kk]   zz1[kk] ]
-        writeFacetSTLB( vert, fid )
-
-    end
-
-end
-
-"""
-    cleanupCHull( faces::Vector{Vector{Int64}},   verts::Matrix{Float64},
-                  nvecs::Vector{Vector{Float64}}, centroid::Vector{Float64} )
-
-Flips the normals outward for the convex hulls and deletes faces that are
-coincident with the end-faces.
-"""
-function cleanupCHull( faces::Vector{Vector{Int64}},   verts::Matrix{Float64},
-                       nvecs::Vector{Vector{Float64}}, centroid::Vector{Float64} )
-
-    ifaces = [i for i in 1:length(faces)]; cnt = 1
-
-    for ff in 1:length(faces)
-
-        # determine if normal points inward or outward
-        cent   = mean( verts[ faces[ff], : ], 1 )[:] # face center
-        veccnt = centroid - cent
-
-        vec1   = verts[ faces[ff][2], : ] - verts[ faces[ff][1], : ]
-        vec2   = verts[ faces[ff][3], : ] - verts[ faces[ff][1], : ]
-        vec1   = cross( vec1, vec2 )
-        normal = vec1 / norm(vec1)
-
-        if dot(normal,veccnt) > 0.0
-            ifac = faces[ff][3]
-            faces[ff][3] = faces[ff][2]
-            faces[ff][2] = ifac
-            normal .*= -1.0
-        end
-
-        # TODO: check faces that align with cylinders
-
-        cnt += 1
-
-        for jj in 1:length(nvecs)
-            if dot( normal, nvecs[jj] ) > 1.0 - 1e-14
-                deleteat!(ifaces,cnt-1)
-                cnt -= 1
-                break
             end
 
         end
+
+        ## order points counterclockwise
+        # pick first point as ϕ = 0
+        zerovec = (intersec[1] - dot( intersec[1], evec ) * evec) /
+                   norm( intersec[1] - dot( intersec[1], evec ) * evec )
+        ϕ = fill(0.0,nact)
+        for jj in 2:nact
+            currnvec = intersec[jj] - dot( intersec[jj], evec ) * evec
+            ϕ[jj] = acos( max( min( dot(zerovec,currnvec) / norm(currnvec), 1.0), -1.0 ) )
+            if dot( cross( zerovec, currnvec ), evec ) < 0.0
+                ϕ[jj] = 2*π - ϕ[jj]
+            end
+        end
+
+        # sort based on ϕ
+        angleind         = sortperm( ϕ )
+        ϕ[1:nact]        = ϕ[angleind]
+        intersec[1:nact] = intersec[angleind]
+        flatact          = flatact[angleind]
+        corrind          = fill( 0, nact )
+        corrind[1]       = angleind[1]
+
+        nact = 1
+        for jj in 1:length(ϕ)-1
+            if (2*π - ϕ[jj+1]) < 1e-14
+                flatact[1] = flatact[1] || any(flatact[jj+1:end])
+            else
+                if (ϕ[jj+1] - ϕ[jj]) > 1e-6
+                    nact += 1
+                    corrind[nact] = jj+1
+                else
+                    flatact[corrind[nact]] = flatact[corrind[nact]] || flatact[jj+1]
+                end
+            end
+        end
+
+        ϕ       = ϕ[ corrind[1:nact] ]
+        flatact[1] = any(flatact[1:corrind[2]-1])
+        flatact = flatact[ corrind[1:nact] ]
+        intersec[1:nact] = intersec[ corrind[1:nact] ]
+
+        # add last point to array to close the loop
+        if (2*π - ϕ[end]) > 1e-3
+            append!( ϕ, 2*π )
+            append!( flatact, flatact[1] )
+            intersec[nact+1] = intersec[1]
+        else
+            ϕ[end] = 2*π
+            nact -= 1
+        end
+
+        # add active points to overall node points
+        actptlinks = [ [i for i in 1:nact]; 1 ] # if no points have been added yet
+        # if ee > 1
+            jj = 1 # first point
+            indnod = findActPointsNod( intersec[jj], actptsNods[kk], actptlinks, jj )
+            actptlinks[end] = indnod
+            for jj in 2:nact
+                indnod = findActPointsNod( intersec[jj], actptsNods[kk], actptlinks, jj )
+            end
+        # end
+
+        # add connectivity for entire node
+        edge_pairs = Vector{SVector{5,Int64}}( nact ) # [nod1,nod2,strut1,strut2]
+
+        ## Generate points along cuts
+        perpvec = cross(evec,zerovec)
+        perpvec ./= norm(perpvec)
+
+        iedge = find( mesh.e[e1,:] .== kk )[]
+        ptsCylEdge[e1][iedge] = Vector{SVector{3,Float64}}(0)
+        for jj in 1:nact
+
+            # TODO need to check here if flatact is true, if true need to stitch
+
+            # figure out on which plane to project
+            ϕhalf   = ( ϕ[jj] + ϕ[jj+1] ) / 2.
+            currpt  = rmax * ( zerovec * cos(ϕhalf) + perpvec * sin(ϕhalf) )
+            normind, halfintersec = findNormPlane( currpt, testpt, normvec[ee], evec )
+
+            normcurr = normvec[ee][normind]
+
+            # Add information about which edge links the struts
+            indhalf = findActPointsNod( halfintersec, actptsNods[kk] )
+            findEdgesNod( edgesNods[kk], SVector{5}( [ actptlinks[jj]; actptlinks[jj+1];
+                                                       sort([e1, eveclink[ee][normind]]); indhalf ] ) )
+
+            projectCircle = true
+            if flatact[jj] && flatact[jj+1]
+                for qq in 1:nnormals
+                    if abs( dot( nvecflat[1], normvec[ee][qq] ) ) < 1e-14
+                        projectCircle = false
+                        break
+                    end
+                end
+                normcurr = - nvecflat[1]
+            end
+
+            Δϕ = ϕ[jj+1] - ϕ[jj]
+            @assert Δϕ > 1e-14
+            np = max( convert( Int64, ceil( (Δϕ-1e-5)/(2*π) * nn ) + 1 ), 2 ) # ensure we have at least two points
+
+            if !projectCircle
+                np = 2
+            end
+
+            ϕcurr = linspace( ϕ[jj], ϕ[jj+1], np )
+
+            # first part
+            intpts = Vector{SVector{3,Float64}}( np )
+            cylpts = Vector{SVector{3,Float64}}( np )
+
+            if projectCircle
+                for ii in 1:np
+                    currpt = rmax * ( zerovec * cos(ϕcurr[ii]) + perpvec * sin(ϕcurr[ii]) ) # current point in plane perpendicular to evec
+                    # find actual point near node
+                    d = dot( -currpt, normcurr ) / dot( evec, normcurr ) # scalar value for which line intersects plane
+                    intpts[ii] = SVector{3}( currpt + d * evec + pcurr )
+                    cylpts[ii] = SVector{3}( sqrt(lat.ar[e1]/π) * ( zerovec * cos(ϕcurr[ii]) + perpvec * sin(ϕcurr[ii]) ) + pcurr + evec * lvmax[ee] )
+
+                end
+            else
+                intpts[1] = intersec[jj]   + pcurr
+                intpts[2] = intersec[jj+1] + pcurr
+                cylpts[1] = SVector{3}( sqrt(lat.ar[e1]/π) * ( zerovec * cos(ϕcurr[1]) + perpvec * sin(ϕcurr[1]) ) + pcurr + evec * lvmax[ee] )
+                cylpts[2] = SVector{3}( sqrt(lat.ar[e1]/π) * ( zerovec * cos(ϕcurr[2]) + perpvec * sin(ϕcurr[2]) ) + pcurr + evec * lvmax[ee] )
+            end
+            # write to file
+            for ii in 1:np-1
+                vert = SVector{3,SVector{3,Float64}}( cylpts[ii], intpts[ii], intpts[ii+1] )
+                writeFacetSTLB( vert, nfac, fid, edgWrite[e1] )
+
+                vert = SVector{3,SVector{3,Float64}}( intpts[ii+1], cylpts[ii+1], cylpts[ii] )
+                writeFacetSTLB( vert, nfac, fid, edgWrite[e1] )
+
+            end
+
+            # if flatact is true, stitch the node
+            if flatact[jj] && flatact[jj+1]
+                # write to file
+                for ii in 1:np-1
+                    vert = SVector{3,SVector{3,Float64}}( intpts[ii+1], intpts[ii], pcurr )
+                    writeFacetSTLB( vert, nfac, fid, edgWrite[e1] )
+                end
+            end
+
+            # save cylinder points for cylinder connections
+            append!( ptsCylEdge[e1][iedge], cylpts[1:end-1] )
+            if jj == nact
+                append!( ptsCylEdge[e1][iedge], cylpts[end:end] )
+            end
+
+        end
+
     end
 
-    return ifaces
-
 end
 
 """
-    writeFacetSTLA( vert::Matrix{Float64}, fid::IOStream )
+    compDist( mesh::MeshF,  lat::Lattice )
 
-Writes one STL facet for ASCII file.
+Computes the distance from the end face to the node
 """
-function writeFacetSTLA( vert::Matrix{Float64}, fid::IOStream )
+function genFacesCyl( cyl::Int64, mesh::MeshF,
+                      ptsCylEdge::Vector{Vector{SVector{3,Float64}}}, nfac::Vector{Int64},
+                      fid::Union{IOStream,Vector{IOStream}}, edgWrite::Vector{Bool} )
 
-    vec1   = vert[2,:] - vert[1,:]
-    vec2   = vert[3,:] - vert[1,:]
-    vec1   = cross( vec1, vec2 )
-    normal = vec1 / norm(vec1)
+    frac = 0.25
 
-    @printf( fid, "facet normal %11.7E %11.7E %11.7E\n", normal[1], normal[2], normal[3] )
-    @printf( fid, " outer loop\n" )
-    @printf( fid, "  vertex %11.7E %11.7E %11.7E\n", vert[1,1], vert[1,2], vert[1,3] )
-    @printf( fid, "  vertex %11.7E %11.7E %11.7E\n", vert[2,1], vert[2,2], vert[2,3] )
-    @printf( fid, "  vertex %11.7E %11.7E %11.7E\n", vert[3,1], vert[3,2], vert[3,3] )
-    @printf( fid, " endloop\n" )
-    @printf( fid, "endfacet\n" )
+    e1 = mesh.e[cyl,1]
+    e2 = mesh.e[cyl,2]
+
+    ## first edge
+    # loop over first edge
+
+    n1 = length( ptsCylEdge[1] )
+    n2 = length( ptsCylEdge[2] )
+
+    # find which side has most points
+    i1 = 1
+    i2 = 2
+    if n2 < n1
+        i2 = 1
+        i1 = 2
+        n1 = (n1 + n2)
+        n2 = n1 - n2
+        n1 = n1 - n2
+    end
+
+    ## generate the all facets, starting with the side with the fewest points
+    # find first index and generate first facet
+    ind0 = findMinDistInd( ptsCylEdge, i1, i2, 1, frac )
+    vert = SVector{3,SVector{3,Float64}}( ptsCylEdge[i1][1], ptsCylEdge[i1][2], ptsCylEdge[i2][ind0] )
+
+    writeFacetSTLB( vert, nfac, fid, edgWrite )
+
+    ind00 = ind0 # need to save this index to close loop
+
+    # generate rest of facets (also for other ring)
+    for jj in 2:n1-1
+
+        ind1 = findMinDistInd( ptsCylEdge, i1, i2, jj, frac )
+
+        vert = SVector{3,SVector{3,Float64}}( ptsCylEdge[i1][jj], ptsCylEdge[i1][jj+1], ptsCylEdge[i2][ind1] )
+        writeFacetSTLB( vert, nfac, fid, edgWrite )
+
+        # generate other faces
+        # NOTE: due to ordering ind1 < ind0
+        if ind0 > ind1
+            for kk = 0:(ind0-ind1-1)
+                vert = SVector{3,SVector{3,Float64}}( ptsCylEdge[i2][ ind1+kk ],
+                                                      ptsCylEdge[i2][ ind1+kk+1 ],
+                                                      ptsCylEdge[i1][ jj ] )
+                writeFacetSTLB( vert, nfac, fid, edgWrite )
+            end
+        elseif ind0 < ind1
+            inds   = vcat(ind1:n2-1, 1:ind0-1)
+            indsp1 = vcat(ind1+1:n2, 2:ind0)
+            for kk in 1:length(inds)
+                vert = SVector{3,SVector{3,Float64}}( ptsCylEdge[i2][ inds[kk] ],
+                                                      ptsCylEdge[i2][ indsp1[kk] ],
+                                                      ptsCylEdge[i1][ jj ] )
+                writeFacetSTLB( vert, nfac, fid, edgWrite )
+            end
+        end
+
+        ind0 = ind1
+
+    end
+    # last patch
+    ind1 = ind00
+    if ind0 > ind1
+        for kk = 0:(ind0-ind1-1)
+            vert = SVector{3,SVector{3,Float64}}( ptsCylEdge[i2][ ind1+kk ],
+                                                  ptsCylEdge[i2][ ind1+kk+1 ],
+                                                  ptsCylEdge[i1][ 1 ] )
+            writeFacetSTLB( vert, nfac, fid, edgWrite )
+        end
+    elseif ind0 < ind1
+        inds   = vcat(ind1:n2-1, 1:ind0-1)
+        indsp1 = vcat(ind1+1:n2, 2:ind0)
+        for kk in 1:length(inds)
+            vert = SVector{3,SVector{3,Float64}}( ptsCylEdge[i2][ inds[kk] ],
+                                                  ptsCylEdge[i2][ indsp1[kk] ],
+                                                  ptsCylEdge[i1][ 1 ] )
+            writeFacetSTLB( vert, nfac, fid, edgWrite )
+        end
+    end
 
 end
 
+function checkPointAct( currpt::SVector{3,Float64}, testpt::Vector{Float64},
+                        normvec::Vector{SVector{3,Float64}}, evec::Vector{Float64} )
+
+    dist    =  norm( currpt - testpt )
+    distorg = dist
+    act = false
+    for ii in 1:length(normvec)
+        # loop over intersecting planes
+        d = dot( - currpt, normvec[ii] ) / dot( evec, normvec[ii] ) # scalar value for which line intersects plane
+        ipt = currpt + d * evec
+
+        cdist = norm( ipt - testpt )
+
+        if cdist < dist
+            # this point is closer
+            dist = cdist
+        end
+    end
+
+    # is point active? Only if new distance is same as original distance
+    if abs(dist - distorg)/abs(dist) < 1e-14
+        act = true
+    end
+
+    return act
+
+end
+
+function findNormPlane( currpt::SVector{3,Float64}, testpt::Vector{Float64},
+                        normvec::Vector{SVector{3,Float64}}, evec::Vector{Float64} )
+
+    dist = 3*norm( currpt - testpt )
+    ind  = 0
+
+    intpt = SVector{3}( 0., 0., 0. )
+
+    for ii in 1:length(normvec)
+        # loop over intersecting planes
+        d = dot( - currpt, normvec[ii] ) / dot( evec, normvec[ii] ) # scalar value for which line intersects plane
+        ipt = currpt + d * evec
+
+        cdist = norm( ipt - testpt )
+
+        if cdist < dist
+            # this point is closer
+            dist  = cdist
+            ind   = ii
+            intpt = ipt
+        end
+        # end
+    end
+
+    return ind, intpt
+
+end
+
+function findMinDistInd( pts::Vector{Vector{SVector{3,Float64}}},
+                         ind1::Int64, ind2::Int64,
+                         jj::Int64, frac::Float64)
+
+    testpt = (1-frac) * pts[ind1][jj] + frac * pts[ind1][jj+1] # check for minimum distance to middle of edge
+
+    # find minimum distance to node on other side
+    dist = 1e4
+    ind  = 0 # look for first index, but after that only allow for + or - one (because should be ordered)
+    for kk in 1:length( pts[ind2] )
+        cdist = norm( pts[ind2][kk] - testpt )
+        if cdist < dist
+            dist = cdist
+            ind = kk
+        end
+    end
+
+    return ind
+end
+
+function uniqueNumPairs( n::Int64 )
+    #   (n + k - 1) nCr (k)
+    # here k = 2, so
+    #   (n + 1) nCr (k)
+    return binomial( n + 1, 2 )
+end
+
 """
-    writeFacetSTLB( vert::Matrix{Float64}, fid::IOStream )
+    writeFacetSTLB( vert::SVector{3,SVector{3,Float64}}, fid::IOStream )
 
 Writes one STL facet for binary file.
 """
-function writeFacetSTLB( vert::Matrix{Float64}, fid::IOStream )
+function writeFacetSTLB( vert::SVector{3,SVector{3,Float64}}, nfac::Vector{Int64},
+                         fid::IOStream, edgWrite::Vector{Bool} )
 
-    vec1   = vert[2,:] - vert[1,:]
-    vec2   = vert[3,:] - vert[1,:]
+    vec1   = vert[2] - vert[1]
+    vec2   = vert[3] - vert[1]
     vec1   = cross( vec1, vec2 )
     normal = vec1 / norm(vec1)
 
@@ -574,19 +762,72 @@ function writeFacetSTLB( vert::Matrix{Float64}, fid::IOStream )
     write( fid, Float32( normal[3] ) )
 
     # Vertex 1
-    write( fid, Float32( vert[1,1] ) )
-    write( fid, Float32( vert[1,2] ) )
-    write( fid, Float32( vert[1,3] ) )
+    write( fid, Float32( vert[1][1] ) )
+    write( fid, Float32( vert[1][2] ) )
+    write( fid, Float32( vert[1][3] ) )
 
     # Vertex 2
-    write( fid, Float32( vert[2,1] ) )
-    write( fid, Float32( vert[2,2] ) )
-    write( fid, Float32( vert[2,3] ) )
+    write( fid, Float32( vert[2][1] ) )
+    write( fid, Float32( vert[2][2] ) )
+    write( fid, Float32( vert[2][3] ) )
 
     # Vertex 3
-    write( fid, Float32( vert[3,1] ) )
-    write( fid, Float32( vert[3,2] ) )
-    write( fid, Float32( vert[3,3] ) )
+    write( fid, Float32( vert[3][1] ) )
+    write( fid, Float32( vert[3][2] ) )
+    write( fid, Float32( vert[3][3] ) )
+
+    # End facet
+    write( fid, UInt16(0) )
+
+    nfac[1] += 1
+
+end
+
+function writeFacetSTLB( vert::SVector{3,SVector{3,Float64}}, nfac::Vector{Int64},
+                         fid::Vector{IOStream}, edgWrite::Vector{Bool} )
+
+    for jj in 1:length( fid )
+
+        if edgWrite[jj]
+            writeFacetSTLB( vert, [0], fid[jj], edgWrite )
+            nfac[jj] += 1
+        end
+
+    end
+
+end
+
+"""
+    writeFacetSTLB( vert::SVector{3,SVector{3,Float64}}, fid::IOStream )
+
+Writes one STL facet for binary file.
+"""
+function writeFacetSTLB( vert::SVector{3,SVector{3,Float64}}, fid::IOStream )
+
+    vec1   = vert[2] - vert[1]
+    vec2   = vert[3] - vert[1]
+    vec1   = cross( vec1, vec2 )
+    normal = vec1 / norm(vec1)
+
+    # normals
+    write( fid, Float32( normal[1] ) )
+    write( fid, Float32( normal[2] ) )
+    write( fid, Float32( normal[3] ) )
+
+    # Vertex 1
+    write( fid, Float32( vert[1][1] ) )
+    write( fid, Float32( vert[1][2] ) )
+    write( fid, Float32( vert[1][3] ) )
+
+    # Vertex 2
+    write( fid, Float32( vert[2][1] ) )
+    write( fid, Float32( vert[2][2] ) )
+    write( fid, Float32( vert[2][3] ) )
+
+    # Vertex 3
+    write( fid, Float32( vert[3][1] ) )
+    write( fid, Float32( vert[3][2] ) )
+    write( fid, Float32( vert[3][3] ) )
 
     # End facet
     write( fid, UInt16(0) )
@@ -594,42 +835,124 @@ function writeFacetSTLB( vert::Matrix{Float64}, fid::IOStream )
 end
 
 """
-    rotTransCirc( xx::Vector{Float64}, yy::Vector{Float64}, b::Vector{Float64} )
+    writeFacetSTLB( vert::SVector{3,SVector{3,Float64}}, fid::IOStream )
 
-Rotates a circle defined in `xx` and `yy` such that it is normal to the vector `b`.
+Writes one STL facet for binary file.
 """
-function rotTransCirc( xx::Vector{Float64}, yy::Vector{Float64}, b::Vector{Float64} )
-    # https://math.stackexchange.com/questions/180418/calculate-rotation-matrix-to-align-vector-a-to-vector-b-in-3d
+function writeFacetSTLB( vert::SVector{3,SVector{3,Float64}},
+                         normal::SVector{3,Float64}, fid::IOStream )
 
-    a = [0.0, 0.0, 1.0]
+    # normals
+    write( fid, Float32( normal[1] ) )
+    write( fid, Float32( normal[2] ) )
+    write( fid, Float32( normal[3] ) )
 
-    c = dot( a, b )
+    # Vertex 1
+    write( fid, Float32( vert[1][1] ) )
+    write( fid, Float32( vert[1][2] ) )
+    write( fid, Float32( vert[1][3] ) )
 
-    tol = 1e-15
+    # Vertex 2
+    write( fid, Float32( vert[2][1] ) )
+    write( fid, Float32( vert[2][2] ) )
+    write( fid, Float32( vert[2][3] ) )
 
-    if c > (-1.0-tol) && c < (-1.0+tol)
-        # don't rotate, because it is just mirrored, but that should not matter
-        res = hcat( xx, yy, 0.0*yy )'
-    else
+    # Vertex 3
+    write( fid, Float32( vert[3][1] ) )
+    write( fid, Float32( vert[3][2] ) )
+    write( fid, Float32( vert[3][3] ) )
 
-        v = cross( a, b )
-        s = norm( v )
+    # End facet
+    write( fid, UInt16(0) )
 
+end
 
-        vx = fill( 0.0, 3, 3 )
-        vx[1,2] = -v[3]
-        vx[1,3] =  v[2]
-        vx[2,1] =  v[3]
-        vx[2,3] = -v[1]
-        vx[3,1] = -v[2]
-        vx[3,2] =  v[1]
+function collisionWarning( mesh::MeshF, fdist::Vector{Vector{Float64}} )
 
-        Q = eye(3) + vx + vx * vx * 1 / (1 + c)
+    nw = 0
+    for jj in 1:length(fdist)
 
-        res = Q * hcat( xx, yy, 0.0*yy )'
+        if fdist[jj][1] > 0.0
+            ledge = norm( mesh.p[ mesh.e[jj,2], : ] - mesh.p[ mesh.e[jj,1], : ] )
+
+            if ledge < sum( fdist[jj] )
+                warn( "Collision detected at edge ", jj )
+                if fdist[jj][1] > ledge || fdist[jj][2] > ledge
+                    println("   protrudes!")
+                end
+                nw += 1
+            end
+        end
 
     end
 
-    return ( res[1,:], res[2,:], res[3,:] )
+    if nw > 0
+        println( "" )
+        warn( "Generated ", nw, " collisions" )
+    end
+
+end
+
+function findActPointsNod( intersec::SVector{3,Float64},
+                           act_points_nod::Vector{SVector{3,Float64}},
+                           actptlinks::Vector{Int64}, ind::Int64 )
+    tol = 1e-10
+
+    indnew = 0
+    for jj in 1:length(act_points_nod)
+        if norm( intersec - act_points_nod[jj] ) < tol
+            indnew = jj
+            break
+        end
+    end
+
+    # add new points
+    if indnew == 0
+        append!( act_points_nod, [intersec] )
+        indnew = length(act_points_nod)
+    end
+
+    actptlinks[ind] = indnew
+
+    return indnew
+
+end
+
+function findActPointsNod( intersec::SVector{3,Float64},
+                           act_points_nod::Vector{SVector{3,Float64}} )
+    tol = 1e-10
+
+    indnew = 0
+    for jj in 1:length(act_points_nod)
+        if norm( intersec - act_points_nod[jj] ) < tol
+            indnew = jj
+            break
+        end
+    end
+
+    # add new points
+    if indnew == 0
+        append!( act_points_nod, [intersec] )
+        indnew = length(act_points_nod)
+    end
+
+    return indnew
+
+end
+
+function findEdgesNod( edges_nod::Vector{SVector{5,Int64}}, edge::SVector{5,Int64} )
+
+    indnew = 0
+    for jj in 1:length(edges_nod)
+        if edge[3] == edges_nod[jj][3] && edge[4] == edges_nod[jj][4]
+            indnew = jj
+            break
+        end
+    end
+
+    # add new edge...
+    if indnew == 0
+        append!( edges_nod, [edge] )
+    end
 
 end
