@@ -16,7 +16,7 @@
 
 Writes a CAD file for the lattice in `mesh` with the areas defined in `lat`.
 """
-function writeCAD( mesh::MeshF,  lat::Lattice, flname::String; eps = 5.e-3, Δeps = 5.e-3 )
+function genCAD( mesh::MeshF,  lat::Lattice, flname::String; eps = 5.e-3, Δeps = 5.e-3 )
 
     # open egads
     (context, status) = egads.EG_open( )
