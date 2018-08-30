@@ -12,11 +12,14 @@
 # ---------------------------------------------------------------------------- #
 
 """
-    genSTL( mesh::MeshF,  lat::Lattice, flname::String; n = 8, name = "object" )
+    genSTL( mesh::MeshF,  lat::Lattice, flname::String;
+            n = 8, boundflat = Vector{Int64}( 0 ) )
 
 Generates a binary .stl file for the lattice in `mesh` with the areas defined in `lat`.
+`boundflat` lists which boundaries are flat.
 """
-function genSTLnew( mesh::MeshF,  lat::Lattice, flname::String; n::Int64 = 8, boundflat = Vector{Int64}( 0 ) )
+function genSTL( mesh::MeshF,  lat::Lattice, flname::String;
+                 n::Int64 = 8, boundflat = Vector{Int64}( 0 ) )
 
     edgWrite = Vector{Vector{Bool}}( size(mesh.e,1) )
     for jj in 1:size(mesh.e,1)
@@ -56,12 +59,15 @@ function genSTLnew( mesh::MeshF,  lat::Lattice, flname::String; n::Int64 = 8, bo
 end
 
 """
-    genSTL( mesh::MeshF,  lat::Lattice, flname::String; n = 8, name = "object" )
+    genSTL( mesh::MeshF,  lat::Lattice, flnames::Vector{String}, edgWrite::Vector{Vector{Bool}};
+            n = 8, boundflat = Vector{Int64}( 0 ) )
 
 Generates a binary .stl file for the lattice in `mesh` with the areas defined in `lat`.
+`edgWrite` lists which struts to write in which file.
+`boundflat` lists which boundaries are flat.
 """
-function genSTLnew( mesh::MeshF,  lat::Lattice, flnames::Vector{String},
-                    edgWrite::Vector{Vector{Bool}}; n::Int64 = 8, boundflat = Vector{Int64}( 0 ) )
+function genSTL( mesh::MeshF,  lat::Lattice, flnames::Vector{String},
+                 edgWrite::Vector{Vector{Bool}}; n::Int64 = 8, boundflat = Vector{Int64}( 0 ) )
 
     # open STL file
     fid = Vector{IOStream}( length(flnames) )
