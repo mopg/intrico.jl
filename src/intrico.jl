@@ -40,10 +40,10 @@ module intrico
     include("lattice/lattice.jl")
 
     # Generate CAD
-    export genCAD, genSTL, genSTLnew, genSTLmodel
+    export genCAD, genSTL, genSTLmodel, genCAD
+    include("cad/ioSTL.jl")
     include("cad/genSTL.jl")
-    include("cad/genSTLmanu.jl")
     include("cad/genSTLmodel.jl")
-    @require egads include("cad/writeCAD.jl")
+    @require egads include("cad/genCAD.jl")
 
 end

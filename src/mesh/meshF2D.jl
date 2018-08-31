@@ -5,7 +5,7 @@
 #   Type for 2D frame meshes
 #   Inherits from the abstract "meshF" type
 #
-#   sterno
+#   intrico
 #   Fall 2017
 #
 #   Max Opgenoord

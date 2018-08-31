@@ -5,7 +5,7 @@
 #   Abstract meshF type
 #   This allows for writing an n-dimensional methods for lattice optimization
 #
-#   sterno
+#   intrico
 #   Fall 2017
 #
 #   Max Opgenoord

@@ -1,3 +1,16 @@
+# ---------------------------------------------------------------------------- #
+#
+#   genSTLmodel.jl
+#
+#   Write STL file for the model, based on just the mesh
+#
+#   intrico
+#   Spring 2018
+#
+#   Max Opgenoord
+#
+# ---------------------------------------------------------------------------- #
+
 function genSTLmodel( mesh::Union{divido.Mesh3D,MeshF3D}, flnameBase::String )
 
     if length(flnameBase) > 4 && flnameBase[end-3:end] == ".stl"

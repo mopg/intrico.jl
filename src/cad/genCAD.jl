@@ -1,10 +1,10 @@
 # ---------------------------------------------------------------------------- #
 #
-#   writeCAD.jl
+#   genCAD.jl
 #
-#   Couple to egads.jl to write a STEP file of the geometry.
+#   Couple to egads.jl to write a STEP file of the geometry
 #
-#   sterno
+#   intrico
 #   Spring 2018
 #
 #   Max Opgenoord

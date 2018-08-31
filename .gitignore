@@ -8,7 +8,3 @@
 *.jl.cov
 *.jl.*.cov
 *.jl.mem
-deps/deps.jl
-runs
-plots
-prints

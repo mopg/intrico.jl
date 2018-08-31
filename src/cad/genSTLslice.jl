@@ -1,3 +1,16 @@
+# ---------------------------------------------------------------------------- #
+#
+#   genSTLslice.jl
+#
+#   Generate STL slices directly from lattice frame representation
+#
+#   intrico
+#   Summer 2018
+#
+#   Max Opgenoord
+#
+# ---------------------------------------------------------------------------- #
+
 function genSTLslice( mesh::MeshF,  lat::Lattice, flname::String,
                       nprinter::SVector{3,Float64}, z::Float64,
                       actptsNods::Vector{Vector{SVector{3,Float64}}},
